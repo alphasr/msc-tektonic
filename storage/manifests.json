@@ -1,0 +1,82 @@
+{
+  "b928049d568bac59": {
+    "track_id": "b928049d568bac59",
+    "status": "error",
+    "title": "Fedde Le Grand - Metrum [Official Music Video]",
+    "file_size": 13540497,
+    "file_path": "/Users/nilaybaranwal/Desktop/projects/msc/storage/tracks/b928049d568bac59/audio.mp3",
+    "content_digest": "59d16e5965f925cd8873fa5437864145c17a6eaf92852e138b218f00b774ff38",
+    "created_at": "2025-12-08T23:25:41.243Z",
+    "updated_at": "2025-12-08T23:25:55.331Z",
+    "error_reason": "Cannot find ffprobe"
+  },
+  "309f8ee822e8db83": {
+    "track_id": "309f8ee822e8db83",
+    "status": "error",
+    "title": "Le Vinyl, Javi Bora & Melohman - La Hoja (Coyu Edit)",
+    "file_size": 10161350,
+    "file_path": "/Users/nilaybaranwal/Desktop/projects/msc/storage/tracks/309f8ee822e8db83/audio.mp3",
+    "content_digest": "1452b5bd9dc04c603abb8f4472532759304ccdc9e817e9b551c8afb9e78f1fc5",
+    "created_at": "2025-12-08T23:47:37.511Z",
+    "updated_at": "2025-12-08T23:47:51.624Z",
+    "error_reason": "Cannot find ffprobe"
+  },
+  "837ac26e51cd592c": {
+    "track_id": "837ac26e51cd592c",
+    "status": "error",
+    "title": "Him Self Her - Gone Too Long (Original Mix) - TheIoLoSo9",
+    "file_size": 17485561,
+    "file_path": "/Users/nilaybaranwal/Desktop/projects/msc/storage/tracks/837ac26e51cd592c/audio.mp3",
+    "content_digest": "469f6174bb6082e417c6881f5465a7c18b5f037941018a771503b35df5ab0df1",
+    "created_at": "2025-12-09T00:07:58.451Z",
+    "updated_at": "2025-12-09T00:08:12.591Z",
+    "error_reason": "Cannot find ffprobe"
+  },
+  "8caba7dfd0e63fde": {
+    "track_id": "8caba7dfd0e63fde",
+    "status": "error",
+    "title": "FAUL - Happy Endings - TheSoundYouNeed",
+    "file_size": 0,
+    "file_path": "/Users/nilaybaranwal/Desktop/projects/msc/storage/tracks/8caba7dfd0e63fde/audio.mp3",
+    "content_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "created_at": "2025-12-09T00:10:15.514Z",
+    "updated_at": "2025-12-09T00:10:30.310Z",
+    "error_reason": "ffprobe failed: ffprobe exited with code 1\nffprobe version n4.4.1 Copyright (c) 2007-2021 the FFmpeg developers\n  built with Apple clang version 13.0.0 (clang-1300.0.29.30)\n  configuration: \n  libavutil      56. 70.100 / 56. 70.100\n  libavcodec     58.134.100 / 58.134.100\n  libavformat    58. 76.100 / 58. 76.100\n  libavdevice    58. 13.100 / 58. 13.100\n  libavfilter     7.110.100 /  7.110.100\n  libswscale      5.  9.100 /  5.  9.100\n  libswresample   3.  9.100 /  3.  9.100\n[mp3 @ 0x14480b000] Format mp3 detected only with low score of 1, misdetection possible!\n[mp3 @ 0x14480b000] Failed to read frame size: Could not seek to 1026.\n/Users/nilaybaranwal/Desktop/projects/msc/storage/tracks/8caba7dfd0e63fde/audio.mp3: Invalid argument\n"
+  },
+  "98539c6266b67765": {
+    "track_id": "98539c6266b67765",
+    "status": "ready",
+    "title": "Jean Claude Ades - Vallée De Larmes (Pleasurekraft 'Sideshow' Remix) (Short Version) - Great Stuff",
+    "file_size": 12844004,
+    "file_path": "/Users/nilaybaranwal/Desktop/projects/msc/storage/tracks/98539c6266b67765/audio.mp3",
+    "content_digest": "f0263b42633ca576bb2269099cf5d216fc95055b64bae62bae321cb14fb591a1",
+    "created_at": "2025-12-09T00:11:49.152Z",
+    "updated_at": "2025-12-09T00:11:50.304Z",
+    "summary": {
+      "tempo_bpm": 125,
+      "key": "11B",
+      "energy": 1.3,
+      "duration": 321,
+      "phrases": 20,
+      "bars": 167
+    }
+  },
+  "8ed5f1d55c823585": {
+    "track_id": "8ed5f1d55c823585",
+    "status": "ready",
+    "title": "Da Hool - meet her at the Loveparade -  Official Video (HQ)",
+    "file_size": 3488006,
+    "file_path": "/Users/nilaybaranwal/Desktop/projects/msc/storage/tracks/8ed5f1d55c823585/audio.mp3",
+    "content_digest": "d58960f0346573723965bc1653de4c2aee7881a6f35ff1aba21089221935c08f",
+    "created_at": "2025-12-09T00:13:21.776Z",
+    "updated_at": "2025-12-09T00:13:22.070Z",
+    "summary": {
+      "tempo_bpm": 126,
+      "key": "9A",
+      "energy": 1.2,
+      "duration": 218,
+      "phrases": 14,
+      "bars": 114
+    }
+  }
+}
