@@ -39,17 +39,15 @@ export interface PhraseSegment {
 }
 
 export interface TransitionCandidate {
-  fromPosition: number;
-  toPosition: number;
+  from_position: number; // phrase end in track A
+  to_position: number; // phrase start in track B
   score: number;
   scores: {
-    texture: number;
+    key: number;
+    energy: number;
+    timing: number;
+    contour: number;
     tempo: number;
-    phase: number;
-    dynamics: number;
-    events: number;
-    boundary: number;
-    risk: number;
   };
 }
 

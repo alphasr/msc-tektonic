@@ -1,18 +1,6 @@
 import { loadFeatures, keyScore, energyScore, cosineSimilarity } from "./analysis"
 import { getManifest } from "./storage"
-
-export interface TransitionCandidate {
-  from_position: number // phrase end in track A
-  to_position: number // phrase start in track B
-  score: number
-  scores: {
-    key: number
-    energy: number
-    timing: number
-    contour: number
-    tempo: number
-  }
-}
+import { TransitionCandidate } from "@/types"
 
 // Enhanced BPM compatibility scoring
 function tempoScore(bpmA: number, bpmB: number): number {
