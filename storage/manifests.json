@@ -78,5 +78,41 @@
       "phrases": 14,
       "bars": 114
     }
+  },
+  "90b61181d9d9cf1b": {
+    "track_id": "90b61181d9d9cf1b",
+    "status": "ready",
+    "title": "andhim-patty-sue-super-flu-suncreams",
+    "file_size": 7857453,
+    "file_path": "/Users/nilaybaranwal/Desktop/projects/msc/storage/tracks/90b61181d9d9cf1b/audio.mp3",
+    "content_digest": "1ec68a692e39e58c9840bc689a5520b50f969c2ca32305956e12ea778020a194",
+    "created_at": "2025-12-13T19:42:25.025Z",
+    "updated_at": "2025-12-13T19:42:41.226Z",
+    "summary": {
+      "tempo_bpm": 120,
+      "key": "12A",
+      "energy": 1.1,
+      "duration": 491,
+      "phrases": 30,
+      "bars": 245
+    }
+  },
+  "534dfd0b9a0e0ac3": {
+    "track_id": "534dfd0b9a0e0ac3",
+    "status": "ready",
+    "title": "VID-20260207-WA0004",
+    "file_size": 1395526,
+    "file_path": "/Users/nilaybaranwal/Desktop/projects/msc/storage/tracks/534dfd0b9a0e0ac3/audio.mp3",
+    "content_digest": "e1fdd9628519f13557ffb8869f3556fd62c5044cd9d1c9d901186f6d7cd080d7",
+    "created_at": "2026-03-24T21:45:12.001Z",
+    "updated_at": "2026-03-24T21:45:14.443Z",
+    "summary": {
+      "tempo_bpm": 122,
+      "key": "8B",
+      "energy": 1.1,
+      "duration": 48,
+      "phrases": 3,
+      "bars": 24
+    }
   }
 }

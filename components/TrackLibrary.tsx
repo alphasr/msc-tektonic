@@ -1,404 +1,257 @@
-"use client"
+'use client';
 
-import React, { useState, useEffect } from "react"
-import { Search, RefreshCw, Sparkles, Music2, TrendingUp } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Track } from "@/types"
-import { cn } from "@/lib/utils"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Progress } from "@/components/ui/progress"
-
-interface TrackRecommendation {
-  track: Track
-  score: number
-  scores: {
-    harmonic: number
-    tempo: number
-    energy: number
-    texture: number
-    phrase: number
-    overall: number
-  }
-  bestTransition?: {
-    fromPosition: number
-    toPosition: number
-    score: number
-  }
-  similarSegments?: Array<{
-    position: number
-    score: number
-    type: "bar" | "phrase"
-  }>
-}
+import React, { useState, useEffect } from 'react';
+import { Search, RefreshCw } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Track } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface TrackLibraryProps {
-  tracks: Track[]
-  onLoadTrack: (track: Track, deck: "A" | "B") => void
-  onRefresh: () => void
+  tracks: Track[];
+  onLoadTrack: (track: Track, deck: 'A' | 'B') => void;
+  onRefresh: () => void;
+  currentKey?: string;
 }
 
-export default function TrackLibrary({ tracks, onLoadTrack, onRefresh }: TrackLibraryProps) {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [bpmFilter, setBpmFilter] = useState(false)
-  const [keyFilter, setKeyFilter] = useState(false)
-  const [energyFilter, setEnergyFilter] = useState(false)
-  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
-  const [recommendations, setRecommendations] = useState<TrackRecommendation[]>([])
-  const [loadingRecommendations, setLoadingRecommendations] = useState(false)
-  const [showRecommendations, setShowRecommendations] = useState(false)
-  const [activeTab, setActiveTab] = useState<"library" | "recommendations">("library")
+function isKeyCompatible(keyA: string, keyB: string): boolean {
+  if (!keyA || !keyB) return false;
+  if (keyA === keyB) return true;
+
+  const numA = parseInt(keyA);
+  const numB = parseInt(keyB);
+  const letterA = keyA.slice(-1);
+  const letterB = keyB.slice(-1);
+
+  if (numA === numB && letterA !== letterB) return true;
+  
+  if (letterA === letterB) {
+    let diff = Math.abs(numA - numB);
+    if (diff === 11) diff = 1;
+    if (diff === 10) diff = 2;
+    if (diff === 1 || diff === 2) return true;
+  }
+  
+  if (letterA !== letterB) {
+    let diff = Math.abs(numA - numB);
+    if (diff > 6) diff = 12 - diff;
+    if (diff === 3) return true;
+  }
+
+  return false;
+}
+
+export default function TrackLibrary({
+  tracks,
+  onLoadTrack,
+  onRefresh,
+  currentKey,
+}: TrackLibraryProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [bpmFilter, setBpmFilter] = useState(false);
+  const [keyFilter, setKeyFilter] = useState(false);
+  const [energyFilter, setEnergyFilter] = useState(false);
+  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
 
   // Debug: log tracks when they change
   useEffect(() => {
-    console.log("TrackLibrary received tracks:", tracks.length)
+    console.log('TrackLibrary received tracks:', tracks.length);
     if (tracks.length > 0) {
-      console.log("First track:", tracks[0])
-    }
-  }, [tracks])
-
-  // Fetch recommendations when track is selected
-  useEffect(() => {
-    if (selectedTrack) {
-      fetchRecommendations(selectedTrack.id)
-      // Auto-switch to recommendations tab when track is selected and recommendations are loaded
-      if (recommendations.length > 0) {
-        setActiveTab("recommendations")
-      }
+      console.log('First track:', tracks[0]);
     } else {
-      setRecommendations([])
-      setShowRecommendations(false)
-      setActiveTab("library")
+      console.log('No tracks received. Check API endpoint /api/tracks');
     }
-  }, [selectedTrack])
-
-  // Switch to recommendations tab when recommendations are loaded
-  useEffect(() => {
-    if (selectedTrack && recommendations.length > 0 && activeTab === "library") {
-      // Don't auto-switch, let user choose
-    }
-  }, [recommendations])
-
-  const fetchRecommendations = async (trackId: string) => {
-    setLoadingRecommendations(true)
-    try {
-      const response = await fetch(`/api/recommendations?trackId=${trackId}&limit=8`)
-      if (response.ok) {
-        const data = await response.json()
-        setRecommendations(data)
-        setShowRecommendations(true)
-      }
-    } catch (error) {
-      console.error("Failed to fetch recommendations:", error)
-    } finally {
-      setLoadingRecommendations(false)
-    }
-  }
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
-
-  const getScoreColor = (score: number) => {
-    if (score >= 0.8) return "text-green-500"
-    if (score >= 0.6) return "text-yellow-500"
-    return "text-orange-500"
-  }
+  }, [tracks]);
 
   const filteredTracks = tracks.filter((track) => {
-    if (searchQuery && !track.title.toLowerCase().includes(searchQuery.toLowerCase()) && 
-        !track.artist.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !track.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())) &&
-        !track.key.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false
+    if (
+      searchQuery &&
+      !track.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !track.artist.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !track.tags.some((tag) =>
+        tag.toLowerCase().includes(searchQuery.toLowerCase())
+      ) &&
+      !track.key.toLowerCase().includes(searchQuery.toLowerCase())
+    ) {
+      return false;
     }
-    if (bpmFilter && (track.bpm < 120 || track.bpm > 130)) return false
-    if (energyFilter && track.energy < 7) return false
-    return true
-  })
+    if (bpmFilter && (track.bpm < 120 || track.bpm > 130)) return false;
+    if (energyFilter && track.energy < 7) return false;
+    if (keyFilter && currentKey && !isKeyCompatible(currentKey, track.key)) return false;
+    return true;
+  });
 
   const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
-    <div className="flex flex-col h-full rounded-lg border bg-card overflow-hidden">
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "library" | "recommendations")} className="h-full flex flex-col">
-        <TabsList className="w-full h-8 rounded-none border-b flex-shrink-0">
-          <TabsTrigger value="library" className="text-xs px-3 h-7">
-            Library
-          </TabsTrigger>
-          <TabsTrigger 
-            value="recommendations" 
-            className="text-xs px-3 h-7"
-            disabled={!selectedTrack}
-          >
-            <Sparkles className="w-3 h-3 mr-1" />
-            Recommendations {selectedTrack && recommendations.length > 0 && `(${recommendations.length})`}
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="library" className="flex-1 flex flex-col p-1.5 !mt-0 min-h-0 overflow-hidden">
-          <div className="mb-1 flex-shrink-0">
-            <h2 className="text-xs font-bold mb-0.5">Track Library</h2>
-            <p className="text-[10px] text-muted-foreground">
-              Click to select • Double-click to load into Deck A
+    <div className='flex flex-col h-full overflow-hidden'>
+      <div className='flex-1 flex flex-col p-1.5 min-h-0 overflow-hidden'>
+        {/* Header */}
+        <div className='mb-1.5 flex-shrink-0 flex items-center justify-between'>
+          <div>
+            <h2 className='text-xs font-semibold mb-0.5'>Track Library</h2>
+            <p className='text-[10px] text-muted-foreground'>
+              Double-click to load
             </p>
           </div>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-6 w-6 p-0'
+            onClick={onRefresh}
+          >
+            <RefreshCw className='w-3 h-3' />
+          </Button>
+        </div>
 
-      <div className="mb-0.5 flex-shrink-0">
-        <div className="relative mb-1">
-          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-          <Input
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-7 h-7 text-xs"
-          />
+        {/* Search and Filters */}
+        <div className='mb-1.5 flex-shrink-0 space-y-1'>
+          <div className='relative'>
+            <Search className='absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground' />
+            <Input
+              placeholder='Search...'
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className='pl-7 h-6 text-[10px]'
+            />
+          </div>
+          <div className='flex gap-1 flex-wrap'>
+            <Button
+              variant={bpmFilter ? 'default' : 'outline'}
+              size='sm'
+              className='h-5 text-[10px] px-2'
+              onClick={() => setBpmFilter(!bpmFilter)}
+            >
+              BPM
+            </Button>
+            <Button
+              variant={keyFilter ? 'default' : 'outline'}
+              size='sm'
+              className='h-5 text-[10px] px-2'
+              onClick={() => setKeyFilter(!keyFilter)}
+            >
+              Key
+            </Button>
+            <Button
+              variant={energyFilter ? 'default' : 'outline'}
+              size='sm'
+              className='h-5 text-[10px] px-2'
+              onClick={() => setEnergyFilter(!energyFilter)}
+            >
+              Energy
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-1 flex-wrap mb-1">
-          <Button variant="outline" size="sm" className="h-6 text-xs px-2">Connect</Button>
-          <Button variant="outline" size="sm" className="h-6 text-xs px-2">Browser</Button>
-        </div>
-        <div className="flex gap-1 flex-wrap">
-          <Button
-            variant={bpmFilter ? "default" : "outline"}
-            size="sm"
-            className="h-6 text-xs px-2"
-            onClick={() => setBpmFilter(!bpmFilter)}
-          >
-            BPM
-          </Button>
-          <Button
-            variant={keyFilter ? "default" : "outline"}
-            size="sm"
-            className="h-6 text-xs px-2"
-            onClick={() => setKeyFilter(!keyFilter)}
-          >
-            Key
-          </Button>
-          <Button
-            variant={energyFilter ? "default" : "outline"}
-            size="sm"
-            className="h-6 text-xs px-2"
-            onClick={() => setEnergyFilter(!energyFilter)}
-          >
-            Energy
-          </Button>
-          <Button variant="outline" size="sm" className="h-6 text-xs px-2">Tags</Button>
-        </div>
-      </div>
 
-      <div className="flex-1 overflow-auto min-h-0">
-        {filteredTracks.length > 0 ? (
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-background border-b z-10">
-              <tr>
-                <th className="text-left p-1 text-[10px] font-semibold">TITLE</th>
-                <th className="text-left p-1 text-[10px] font-semibold">ARTIST</th>
-                <th className="text-left p-1 text-[10px] font-semibold">BPM</th>
-                <th className="text-left p-1 text-[10px] font-semibold">KEY</th>
-                <th className="text-left p-1 text-[10px] font-semibold">ENERGY</th>
-                <th className="text-left p-1 text-[10px] font-semibold">DURATION</th>
-                <th className="text-center p-1 text-[10px] font-semibold">LOAD A</th>
-                <th className="text-center p-1 text-[10px] font-semibold">LOAD B</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div
+          className='flex-1 overflow-y-auto min-h-0 relative'
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          {filteredTracks.length > 0 ? (
+            <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5'>
               {filteredTracks.map((track) => (
-                <tr
+                <div
                   key={track.id}
                   className={cn(
-                    "border-b hover:bg-muted/50 cursor-pointer",
-                    selectedTrack?.id === track.id && "bg-primary/10"
+                    'group p-2 rounded border bg-card/50 hover:bg-card hover:border-border/80 cursor-pointer transition-all duration-200',
+                    selectedTrack?.id === track.id &&
+                      'bg-primary/5 border-primary/50'
                   )}
                   onClick={() => setSelectedTrack(track)}
-                  onDoubleClick={() => onLoadTrack(track, "A")}
+                  onDoubleClick={() => onLoadTrack(track, 'A')}
                 >
-                  <td className="p-1 truncate max-w-[150px]">{track.title}</td>
-                  <td className="p-1 truncate max-w-[120px]">{track.artist}</td>
-                  <td className="p-1">{track.bpm}</td>
-                  <td className="p-1">{track.key}</td>
-                  <td className="p-1">{track.energy}</td>
-                  <td className="p-1">{formatDuration(track.duration)}</td>
-                  <td className="p-1 text-center">
+                  {/* Title and Artist */}
+                  <div className='mb-1.5'>
+                    <div className='text-[11px] font-medium truncate mb-0.5 text-foreground'>
+                      {track.title}
+                    </div>
+                    <div className='text-[10px] text-muted-foreground truncate'>
+                      {track.artist}
+                    </div>
+                  </div>
+
+                  {/* Track Details Grid */}
+                  <div className='grid grid-cols-2 gap-x-2 gap-y-1 mb-1.5 text-[10px]'>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-muted-foreground'>BPM</span>
+                      <span className='font-mono font-medium'>{track.bpm}</span>
+                    </div>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-muted-foreground'>Key</span>
+                      <span className='font-mono font-medium'>{track.key}</span>
+                    </div>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-muted-foreground'>Dur</span>
+                      <span className='font-mono font-medium'>
+                        {formatDuration(track.duration)}
+                      </span>
+                    </div>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-muted-foreground'>E</span>
+                      <div className='flex items-center gap-1'>
+                        <span className='font-medium text-[9px]'>
+                          {track.energy.toFixed(1)}
+                        </span>
+                        <div className='w-8 h-0.5 bg-muted rounded-full overflow-hidden'>
+                          <div
+                            className='h-full bg-primary/80 transition-all'
+                            style={{
+                              width: `${Math.min(track.energy * 10, 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className='flex gap-1 pt-1 border-t border-border/50'>
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-deck-a hover:text-deck-a hover:bg-deck-a/10 h-6 px-2 text-xs"
+                      variant='ghost'
+                      size='sm'
+                      className='flex-1 h-5 text-[10px] font-medium text-deck-a hover:text-deck-a hover:bg-deck-a/10 px-1'
                       onClick={(e) => {
-                        e.stopPropagation()
-                        onLoadTrack(track, "A")
+                        e.stopPropagation();
+                        onLoadTrack(track, 'A');
                       }}
                     >
                       A
                     </Button>
-                  </td>
-                  <td className="p-1 text-center">
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-deck-b hover:text-deck-b hover:bg-deck-b/10 h-6 px-2 text-xs"
+                      variant='ghost'
+                      size='sm'
+                      className='flex-1 h-5 text-[10px] font-medium text-deck-b hover:text-deck-b hover:bg-deck-b/10 px-1'
                       onClick={(e) => {
-                        e.stopPropagation()
-                        onLoadTrack(track, "B")
+                        e.stopPropagation();
+                        onLoadTrack(track, 'B');
                       }}
                     >
                       B
                     </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="text-center py-4 text-muted-foreground text-xs">
-            <div>No tracks found</div>
-            <div className="text-[10px] mt-1">
-              {tracks.length === 0 
-                ? "No tracks available. Upload tracks in the Analyze page."
-                : "Adjust filters or connect a streaming library to see more results."}
-            </div>
-          </div>
-        )}
-      </div>
-
-          <div className="mt-1 text-xs text-muted-foreground flex-shrink-0">
-            <div className="text-[10px]">Click to select for recommendations • Double-click to load</div>
-          </div>
-
-          <Button variant="outline" size="sm" className="mt-1 h-7 text-xs" onClick={onRefresh}>
-            <RefreshCw className="w-3 h-3 mr-1" />
-            Refresh
-          </Button>
-        </TabsContent>
-
-        <TabsContent value="recommendations" className="flex-1 p-1.5 !mt-0 min-h-0 overflow-auto data-[state=active]:block data-[state=inactive]:hidden">
-          {selectedTrack && (
-            <div className="space-y-2">
-              <div className="mb-2">
-                <h3 className="text-xs font-bold mb-1">Selected Track</h3>
-                <div className="text-[10px] bg-muted p-2 rounded">
-                  <div className="font-semibold">{selectedTrack.title}</div>
-                  <div className="text-muted-foreground">{selectedTrack.artist}</div>
-                  <div className="text-muted-foreground mt-1">
-                    BPM: {selectedTrack.bpm} • Key: {selectedTrack.key} • Energy: {selectedTrack.energy}
                   </div>
                 </div>
+              ))}
+            </div>
+          ) : (
+            <div className='absolute inset-0 flex items-center justify-center text-center py-12'>
+              <div>
+                <div className='text-sm font-medium mb-2 text-foreground'>
+                  No tracks found
+                </div>
+                <div className='text-xs text-muted-foreground'>
+                  {tracks.length === 0
+                    ? 'No tracks available. Upload tracks in the Analyze page.'
+                    : 'Adjust filters to see more results.'}
+                </div>
               </div>
-
-              {loadingRecommendations ? (
-                <div className="text-center py-4 text-xs text-muted-foreground">
-                  Loading recommendations...
-                </div>
-              ) : recommendations.length > 0 ? (
-                <div className="space-y-2">
-                  <h3 className="text-xs font-bold">Recommended Tracks</h3>
-                  {recommendations.map((rec, idx) => (
-                    <Card key={rec.track.id} className="p-2">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-xs truncate">{rec.track.title}</div>
-                          <div className="text-[10px] text-muted-foreground truncate">{rec.track.artist}</div>
-                          <div className="text-[10px] text-muted-foreground mt-1">
-                            BPM: {rec.track.bpm} • Key: {rec.track.key} • Energy: {rec.track.energy}
-                          </div>
-                        </div>
-                        <div className="ml-2 text-right">
-                          <div className={cn("text-xs font-bold", getScoreColor(rec.score))}>
-                            {(rec.score * 100).toFixed(0)}%
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">Match</div>
-                        </div>
-                      </div>
-
-                      {/* Score breakdown */}
-                      <div className="space-y-1 mb-2">
-                        <div className="flex items-center gap-2 text-[10px]">
-                          <span className="w-16">Harmonic:</span>
-                          <Progress value={rec.scores.harmonic * 100} className="h-1.5 flex-1" />
-                          <span className="w-8 text-right">{(rec.scores.harmonic * 100).toFixed(0)}%</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px]">
-                          <span className="w-16">Tempo:</span>
-                          <Progress value={rec.scores.tempo * 100} className="h-1.5 flex-1" />
-                          <span className="w-8 text-right">{(rec.scores.tempo * 100).toFixed(0)}%</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px]">
-                          <span className="w-16">Energy:</span>
-                          <Progress value={rec.scores.energy * 100} className="h-1.5 flex-1" />
-                          <span className="w-8 text-right">{(rec.scores.energy * 100).toFixed(0)}%</span>
-                        </div>
-                      </div>
-
-                      {/* Best transition point */}
-                      {rec.bestTransition && (
-                        <div className="text-[10px] bg-muted/50 p-1.5 rounded mb-2">
-                          <div className="font-semibold mb-1">Best Transition Point</div>
-                          <div className="text-muted-foreground">
-                            From: {formatTime(rec.bestTransition.fromPosition)} → To: {formatTime(rec.bestTransition.toPosition)}
-                          </div>
-                          <div className="text-muted-foreground">
-                            Similarity: {(rec.bestTransition.score * 100).toFixed(0)}%
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Similar segments */}
-                      {rec.similarSegments && rec.similarSegments.length > 0 && (
-                        <div className="text-[10px]">
-                          <div className="font-semibold mb-1">Similar Segments ({rec.similarSegments.length})</div>
-                          <div className="flex flex-wrap gap-1">
-                            {rec.similarSegments.map((seg, i) => (
-                              <div
-                                key={i}
-                                className="bg-primary/10 px-1.5 py-0.5 rounded text-[9px]"
-                                title={`${formatTime(seg.position)} - ${(seg.score * 100).toFixed(0)}% match`}
-                              >
-                                {formatTime(seg.position)} ({(seg.score * 100).toFixed(0)}%)
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Load buttons */}
-                      <div className="flex gap-1 mt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 h-6 text-xs"
-                          onClick={() => onLoadTrack(rec.track, "A")}
-                        >
-                          Load A
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 h-6 text-xs"
-                          onClick={() => onLoadTrack(rec.track, "B")}
-                        >
-                          Load B
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-4 text-xs text-muted-foreground">
-                  No recommendations found. Try selecting a different track.
-                </div>
-              )}
             </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
-

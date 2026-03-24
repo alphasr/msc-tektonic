@@ -80,8 +80,8 @@ export default function CentralMixer({
 
       <div className="flex-1 grid grid-cols-3 gap-1.5 min-h-0 mb-1 overflow-hidden">
         {/* Deck A EQ */}
-        <div className="flex flex-col items-center min-w-0 overflow-hidden">
-          <div className="text-[9px] font-semibold mb-0.5 text-deck-a">DECK A</div>
+        <div className="flex flex-col items-center min-w-0 overflow-hidden bg-background/50 rounded p-1 border shadow-inner">
+          <div className="text-[9px] font-bold mb-0.5 text-deck-a tracking-widest">DECK A</div>
           <div className="flex flex-col gap-0.5 flex-1 justify-center min-h-0">
             <div className="flex flex-col items-center">
               <div className="text-[9px] mb-0.5 text-muted-foreground">Hi</div>
@@ -123,8 +123,8 @@ export default function CentralMixer({
         </div>
 
         {/* Master FX */}
-        <div className="flex flex-col items-center min-w-0 overflow-hidden">
-          <div className="text-[9px] font-semibold mb-0.5">MASTER</div>
+        <div className="flex flex-col items-center min-w-0 overflow-hidden bg-background/50 rounded p-1 border shadow-inner">
+          <div className="text-[9px] font-bold mb-0.5 tracking-widest text-muted-foreground">MASTER</div>
           <div className="flex flex-col gap-0.5 flex-1 justify-center min-h-0">
             <div className="flex flex-col items-center">
               <div className="text-[9px] mb-0.5 text-muted-foreground">Send</div>
@@ -152,8 +152,8 @@ export default function CentralMixer({
         </div>
 
         {/* Deck B EQ */}
-        <div className="flex flex-col items-center min-w-0 overflow-hidden">
-          <div className="text-[9px] font-semibold mb-0.5 text-deck-b">DECK B</div>
+        <div className="flex flex-col items-center min-w-0 overflow-hidden bg-background/50 rounded p-1 border shadow-inner">
+          <div className="text-[9px] font-bold mb-0.5 text-deck-b tracking-widest">DECK B</div>
           <div className="flex flex-col gap-0.5 flex-1 justify-center min-h-0">
             <div className="flex flex-col items-center">
               <div className="text-[9px] mb-0.5 text-muted-foreground">Hi</div>
@@ -197,9 +197,9 @@ export default function CentralMixer({
 
       {/* Volume Faders */}
       <div className="grid grid-cols-3 gap-1.5 mb-1 flex-shrink-0 overflow-hidden">
-        <div className="flex flex-col items-center min-w-0">
-          <div className="text-[9px] mb-0.5 text-deck-a font-medium">A</div>
-          <div className="flex-1 flex flex-col items-center justify-end min-h-[80px]">
+        <div className="flex flex-col items-center min-w-0 bg-background/50 rounded pt-1 pb-2 border shadow-inner">
+          <div className="text-[10px] mb-0.5 text-deck-a font-bold tracking-widest">A</div>
+          <div className="flex-1 flex gap-3 items-center justify-center min-h-[80px] px-2 w-full">
             <Slider
               orientation="vertical"
               value={[deckA.volume]}
@@ -209,16 +209,16 @@ export default function CentralMixer({
               step={0.1}
               className="h-24"
             />
-            <div className="text-[9px] mt-0.5 text-muted-foreground">{formatDB(deckA.volume - 50)}</div>
-            <div className="flex gap-0.5 mt-0.5">
+            <div className="text-[9px] font-mono text-muted-foreground w-6 text-right">{formatDB(deckA.volume - 50)}</div>
+            <div className="flex flex-col-reverse gap-[2px]">
               {mounted ? (
                 getLevelMeter(levelMeters.deckA).map((active, i) => (
                   <div
                     key={i}
                     className={cn(
-                      "w-1.5 h-3 rounded-sm",
-                      i < 8 ? "bg-green-500" : i < 10 ? "bg-yellow-500" : "bg-red-500",
-                      !active && "opacity-30"
+                      "w-3 h-1 rounded-sm transition-all duration-75",
+                      i < 8 ? "bg-[#39d57a]" : i < 10 ? "bg-[#ffc562]" : "bg-[#fc4126]",
+                      active ? "opacity-100 shadow-[0_0_4px_currentColor]" : "opacity-20 shadow-none bg-muted-foreground hidden lg:block"
                     )}
                   />
                 ))
@@ -226,10 +226,7 @@ export default function CentralMixer({
                 Array(12).fill(0).map((_, i) => (
                   <div
                     key={i}
-                    className={cn(
-                      "w-1.5 h-3 rounded-sm opacity-30",
-                      i < 8 ? "bg-green-500" : i < 10 ? "bg-yellow-500" : "bg-red-500"
-                    )}
+                    className="w-3 h-1 rounded-sm opacity-20 bg-muted-foreground hidden lg:block"
                   />
                 ))
               )}
@@ -237,9 +234,9 @@ export default function CentralMixer({
           </div>
         </div>
 
-        <div className="flex flex-col items-center min-w-0">
-          <div className="text-[9px] mb-0.5 font-medium">M</div>
-          <div className="flex-1 flex flex-col items-center justify-end min-h-[80px]">
+        <div className="flex flex-col items-center min-w-0 bg-background/50 rounded pt-1 pb-2 border shadow-inner">
+          <div className="text-[10px] mb-0.5 font-bold tracking-widest text-muted-foreground">M</div>
+          <div className="flex-1 flex gap-3 items-center justify-center min-h-[80px] px-2 w-full">
             <Slider
               orientation="vertical"
               value={[masterVolume]}
@@ -249,16 +246,16 @@ export default function CentralMixer({
               step={0.1}
               className="h-24"
             />
-            <div className="text-[9px] mt-0.5 text-muted-foreground">{formatDB(masterVolume - 50)}</div>
-            <div className="flex gap-0.5 mt-0.5">
+            <div className="text-[9px] font-mono text-muted-foreground w-6 text-right">{formatDB(masterVolume - 50)}</div>
+            <div className="flex flex-col-reverse gap-[2px]">
               {mounted ? (
                 getLevelMeter(levelMeters.master).map((active, i) => (
                   <div
                     key={i}
                     className={cn(
-                      "w-1.5 h-3 rounded-sm",
-                      i < 8 ? "bg-green-500" : i < 10 ? "bg-yellow-500" : "bg-red-500",
-                      !active && "opacity-30"
+                      "w-3 h-1 rounded-sm transition-all duration-75",
+                      i < 8 ? "bg-[#39d57a]" : i < 10 ? "bg-[#ffc562]" : "bg-[#fc4126]",
+                      active ? "opacity-100 shadow-[0_0_4px_currentColor]" : "opacity-20 shadow-none bg-muted-foreground hidden lg:block"
                     )}
                   />
                 ))
@@ -266,10 +263,7 @@ export default function CentralMixer({
                 Array(12).fill(0).map((_, i) => (
                   <div
                     key={i}
-                    className={cn(
-                      "w-1.5 h-3 rounded-sm opacity-30",
-                      i < 8 ? "bg-green-500" : i < 10 ? "bg-yellow-500" : "bg-red-500"
-                    )}
+                    className="w-3 h-1 rounded-sm opacity-20 bg-muted-foreground hidden lg:block"
                   />
                 ))
               )}
@@ -277,9 +271,9 @@ export default function CentralMixer({
           </div>
         </div>
 
-        <div className="flex flex-col items-center min-w-0">
-          <div className="text-[9px] mb-0.5 text-deck-b font-medium">B</div>
-          <div className="flex-1 flex flex-col items-center justify-end min-h-[80px]">
+        <div className="flex flex-col items-center min-w-0 bg-background/50 rounded pt-1 pb-2 border shadow-inner">
+          <div className="text-[10px] mb-0.5 text-deck-b font-bold tracking-widest">B</div>
+          <div className="flex-1 flex gap-3 items-center justify-center min-h-[80px] px-2 w-full">
             <Slider
               orientation="vertical"
               value={[deckB.volume]}
@@ -289,16 +283,16 @@ export default function CentralMixer({
               step={0.1}
               className="h-24"
             />
-            <div className="text-[9px] mt-0.5 text-muted-foreground">{formatDB(deckB.volume - 50)}</div>
-            <div className="flex gap-0.5 mt-0.5">
+            <div className="text-[9px] font-mono text-muted-foreground w-6 text-right">{formatDB(deckB.volume - 50)}</div>
+            <div className="flex flex-col-reverse gap-[2px]">
               {mounted ? (
                 getLevelMeter(levelMeters.deckB).map((active, i) => (
                   <div
                     key={i}
                     className={cn(
-                      "w-1.5 h-3 rounded-sm",
-                      i < 8 ? "bg-green-500" : i < 10 ? "bg-yellow-500" : "bg-red-500",
-                      !active && "opacity-30"
+                      "w-3 h-1 rounded-sm transition-all duration-75",
+                      i < 8 ? "bg-[#39d57a]" : i < 10 ? "bg-[#ffc562]" : "bg-[#fc4126]",
+                      active ? "opacity-100 shadow-[0_0_4px_currentColor]" : "opacity-20 shadow-none bg-muted-foreground hidden lg:block"
                     )}
                   />
                 ))
@@ -306,10 +300,7 @@ export default function CentralMixer({
                 Array(12).fill(0).map((_, i) => (
                   <div
                     key={i}
-                    className={cn(
-                      "w-1.5 h-3 rounded-sm opacity-30",
-                      i < 8 ? "bg-green-500" : i < 10 ? "bg-yellow-500" : "bg-red-500"
-                    )}
+                    className="w-3 h-1 rounded-sm opacity-20 bg-muted-foreground hidden lg:block"
                   />
                 ))
               )}

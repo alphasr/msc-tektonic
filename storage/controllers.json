@@ -1,0 +1,748 @@
+{
+  "controllers": [
+    {
+      "id": "pioneer-ddj-400",
+      "name": "Pioneer DDJ-400",
+      "manufacturer": "Pioneer",
+      "namePatterns": [
+        "DDJ-400",
+        "ddj-400",
+        "Pioneer DDJ-400"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_pause": 37,
+        "deckA_stop": 38,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckA_low": 10,
+        "deckA_mid": 11,
+        "deckA_high": 12,
+        "deckA_hotcue1": 40,
+        "deckA_hotcue2": 41,
+        "deckA_hotcue3": 42,
+        "deckA_hotcue4": 43,
+        "deckB_play": 44,
+        "deckB_pause": 45,
+        "deckB_stop": 46,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "deckB_low": 13,
+        "deckB_mid": 14,
+        "deckB_high": 15,
+        "deckB_hotcue1": 48,
+        "deckB_hotcue2": 49,
+        "deckB_hotcue3": 50,
+        "deckB_hotcue4": 51,
+        "crossfader": 16,
+        "masterVolume": 17,
+        "gainA": 18,
+        "gainB": 19
+      },
+      "drivers": {
+        "windows": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "This controller is USB class-compliant and should work without additional drivers on Windows 10/11."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "This controller is USB class-compliant and should work without additional drivers on macOS."
+          ]
+        },
+        "linux": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "This controller is USB class-compliant. Ensure ALSA is installed: sudo apt-get install alsa-utils"
+          ]
+        }
+      }
+    },
+    {
+      "id": "pioneer-ddj-200",
+      "name": "Pioneer DDJ-200",
+      "manufacturer": "Pioneer",
+      "namePatterns": [
+        "DDJ-200",
+        "ddj-200",
+        "Pioneer DDJ-200"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_pause": 37,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckA_low": 10,
+        "deckA_mid": 11,
+        "deckA_high": 12,
+        "deckB_play": 44,
+        "deckB_pause": 45,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "deckB_low": 13,
+        "deckB_mid": 14,
+        "deckB_high": 15,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "USB class-compliant. No drivers needed for Windows 10/11."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "USB class-compliant. No drivers needed for macOS."
+          ]
+        }
+      }
+    },
+    {
+      "id": "numark-party-mix-mkii",
+      "name": "Numark Party Mix MKII",
+      "manufacturer": "Numark",
+      "namePatterns": [
+        "Party Mix MKII",
+        "Party Mix MK2",
+        "Numark Party Mix",
+        "party mix"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_pause": 37,
+        "deckA_stop": 38,
+        "deckA_cue": 39,
+        "deckA_volume": 28,
+        "deckA_low": 10,
+        "deckA_mid": 11,
+        "deckA_high": 12,
+        "deckB_play": 44,
+        "deckB_pause": 45,
+        "deckB_stop": 46,
+        "deckB_cue": 47,
+        "deckB_volume": 29,
+        "deckB_low": 13,
+        "deckB_mid": 14,
+        "deckB_high": 15,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "USB class-compliant. No drivers needed for Windows 10/11."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "USB class-compliant. No drivers needed for macOS."
+          ]
+        }
+      }
+    },
+    {
+      "id": "numark-mixtrack",
+      "name": "Numark Mixtrack",
+      "manufacturer": "Numark",
+      "namePatterns": [
+        "Mixtrack",
+        "mixtrack",
+        "Numark Mixtrack"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_pause": 37,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckA_low": 10,
+        "deckA_mid": 11,
+        "deckA_high": 12,
+        "deckB_play": 44,
+        "deckB_pause": 45,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "deckB_low": 13,
+        "deckB_mid": 14,
+        "deckB_high": 15,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "USB class-compliant. No drivers needed."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "USB class-compliant. No drivers needed."
+          ]
+        }
+      }
+    },
+    {
+      "id": "traktor-kontrol-s2",
+      "name": "Traktor Kontrol S2",
+      "manufacturer": "Native Instruments",
+      "namePatterns": [
+        "Kontrol S2",
+        "S2",
+        "Traktor Kontrol S2",
+        "KONTROL S2"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_pause": 37,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckA_low": 10,
+        "deckA_mid": 11,
+        "deckA_high": 12,
+        "deckA_hotcue1": 40,
+        "deckA_hotcue2": 41,
+        "deckA_hotcue3": 42,
+        "deckA_hotcue4": 43,
+        "deckB_play": 44,
+        "deckB_pause": 45,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "deckB_low": 13,
+        "deckB_mid": 14,
+        "deckB_high": 15,
+        "deckB_hotcue1": 48,
+        "deckB_hotcue2": 49,
+        "deckB_hotcue3": 50,
+        "deckB_hotcue4": 51,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": true,
+          "classCompliant": false,
+          "downloadUrl": "https://www.native-instruments.com/en/support/downloads/",
+          "instructions": [
+            "Download and install Traktor Kontrol S2 drivers from Native Instruments website.",
+            "Ensure Traktor software drivers are installed even if not using Traktor software."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Works with macOS built-in drivers. No additional drivers needed."
+          ]
+        }
+      }
+    },
+    {
+      "id": "traktor-kontrol-s4",
+      "name": "Traktor Kontrol S4",
+      "manufacturer": "Native Instruments",
+      "namePatterns": [
+        "Kontrol S4",
+        "S4",
+        "Traktor Kontrol S4",
+        "KONTROL S4"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_pause": 37,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckA_low": 10,
+        "deckA_mid": 11,
+        "deckA_high": 12,
+        "deckA_hotcue1": 40,
+        "deckA_hotcue2": 41,
+        "deckA_hotcue3": 42,
+        "deckA_hotcue4": 43,
+        "deckB_play": 44,
+        "deckB_pause": 45,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "deckB_low": 13,
+        "deckB_mid": 14,
+        "deckB_high": 15,
+        "deckB_hotcue1": 48,
+        "deckB_hotcue2": 49,
+        "deckB_hotcue3": 50,
+        "deckB_hotcue4": 51,
+        "crossfader": 16,
+        "masterVolume": 17,
+        "fx1": 20,
+        "fx2": 21
+      },
+      "drivers": {
+        "windows": {
+          "required": true,
+          "classCompliant": false,
+          "downloadUrl": "https://www.native-instruments.com/en/support/downloads/",
+          "instructions": [
+            "Download and install Traktor Kontrol S4 drivers from Native Instruments website."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Works with macOS built-in drivers."
+          ]
+        }
+      }
+    },
+    {
+      "id": "pioneer-ddj-flx4",
+      "name": "Pioneer DDJ-FLX4",
+      "manufacturer": "Pioneer",
+      "namePatterns": [
+        "DDJ-FLX4",
+        "ddj-flx4",
+        "FLX4"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_pause": 37,
+        "deckA_stop": 38,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckA_low": 10,
+        "deckA_mid": 11,
+        "deckA_high": 12,
+        "deckA_hotcue1": 40,
+        "deckA_hotcue2": 41,
+        "deckA_hotcue3": 42,
+        "deckA_hotcue4": 43,
+        "deckB_play": 44,
+        "deckB_pause": 45,
+        "deckB_stop": 46,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "deckB_low": 13,
+        "deckB_mid": 14,
+        "deckB_high": 15,
+        "deckB_hotcue1": 48,
+        "deckB_hotcue2": 49,
+        "deckB_hotcue3": 50,
+        "deckB_hotcue4": 51,
+        "crossfader": 16,
+        "masterVolume": 17,
+        "gainA": 18,
+        "gainB": 19
+      },
+      "drivers": {
+        "windows": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "USB class-compliant on Windows."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "USB class-compliant on macOS."
+          ]
+        }
+      }
+    },
+    {
+      "id": "pioneer-ddj-1000",
+      "name": "Pioneer DDJ-1000",
+      "manufacturer": "Pioneer",
+      "namePatterns": [
+        "DDJ-1000",
+        "ddj-1000"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_pause": 37,
+        "deckA_stop": 38,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckA_low": 10,
+        "deckA_mid": 11,
+        "deckA_high": 12,
+        "deckB_play": 44,
+        "deckB_pause": 45,
+        "deckB_stop": 46,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "deckB_low": 13,
+        "deckB_mid": 14,
+        "deckB_high": 15,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Download drivers from Pioneer DJ website."
+          ]
+        },
+        "macos": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Download drivers from Pioneer DJ website."
+          ]
+        }
+      }
+    },
+    {
+      "id": "pioneer-ddj-sb3",
+      "name": "Pioneer DDJ-SB3",
+      "manufacturer": "Pioneer",
+      "namePatterns": [
+        "DDJ-SB3",
+        "SB3"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckB_play": 44,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Class Compliant USB."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Class Compliant USB."
+          ]
+        }
+      }
+    },
+    {
+      "id": "pioneer-xdj-rx3",
+      "name": "Pioneer XDJ-RX3",
+      "manufacturer": "Pioneer",
+      "namePatterns": [
+        "XDJ-RX3",
+        "RX3"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckB_play": 44,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Install Pioneer Audio drivers."
+          ]
+        },
+        "macos": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Install Pioneer Audio drivers."
+          ]
+        }
+      }
+    },
+    {
+      "id": "numark-mixtrack-pro-fx",
+      "name": "Numark Mixtrack Pro FX",
+      "manufacturer": "Numark",
+      "namePatterns": [
+        "Mixtrack Pro FX",
+        "Mixtrack Platinum FX"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckB_play": 44,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Plug and play."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Plug and play."
+          ]
+        }
+      }
+    },
+    {
+      "id": "hercules-inpulse-500",
+      "name": "Hercules DJControl Inpulse 500",
+      "manufacturer": "Hercules",
+      "namePatterns": [
+        "Inpulse 500",
+        "DJControl Inpulse 500"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckB_play": 44,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Install Hercules drivers."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Plug and play."
+          ]
+        }
+      }
+    },
+    {
+      "id": "reloop-buddy",
+      "name": "Reloop Buddy",
+      "manufacturer": "Reloop",
+      "namePatterns": [
+        "Reloop Buddy",
+        "Buddy"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckB_play": 44,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Plug and play."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Plug and play."
+          ]
+        }
+      }
+    },
+    {
+      "id": "denon-prime-go",
+      "name": "Denon DJ Prime Go",
+      "manufacturer": "Denon DJ",
+      "namePatterns": [
+        "Prime Go",
+        "Denon Prime Go"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckB_play": 44,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Install Engine OS drivers."
+          ]
+        },
+        "macos": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Install Engine OS drivers."
+          ]
+        }
+      }
+    },
+    {
+      "id": "traktor-kontrol-s3",
+      "name": "Traktor Kontrol S3",
+      "manufacturer": "Native Instruments",
+      "namePatterns": [
+        "Kontrol S3",
+        "Traktor Kontrol S3"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckB_play": 44,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Download drivers from Native Instruments."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Plug and play on macOS."
+          ]
+        }
+      }
+    },
+    {
+      "id": "rane-one",
+      "name": "Rane One",
+      "manufacturer": "Rane",
+      "namePatterns": [
+        "Rane One",
+        "RANE ONE"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckB_play": 44,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Install Rane Control Panel."
+          ]
+        },
+        "macos": {
+          "required": true,
+          "classCompliant": false,
+          "instructions": [
+            "Install Rane Control Panel."
+          ]
+        }
+      }
+    },
+    {
+      "id": "generic-fallback",
+      "name": "Generic MIDI Controller",
+      "manufacturer": "Unknown",
+      "namePatterns": [
+        "*"
+      ],
+      "mapping": {
+        "deckA_play": 36,
+        "deckA_pause": 37,
+        "deckA_stop": 38,
+        "deckA_cue": 39,
+        "deckA_volume": 7,
+        "deckA_low": 10,
+        "deckA_mid": 11,
+        "deckA_high": 12,
+        "deckB_play": 44,
+        "deckB_pause": 45,
+        "deckB_stop": 46,
+        "deckB_cue": 47,
+        "deckB_volume": 8,
+        "deckB_low": 13,
+        "deckB_mid": 14,
+        "deckB_high": 15,
+        "crossfader": 16,
+        "masterVolume": 17
+      },
+      "drivers": {
+        "windows": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Most modern MIDI controllers are USB class-compliant.",
+            "If your controller is not working, check the manufacturer's website for drivers."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Most modern MIDI controllers are USB class-compliant.",
+            "If your controller is not working, check the manufacturer's website for drivers."
+          ]
+        },
+        "linux": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Ensure ALSA is installed: sudo apt-get install alsa-utils",
+            "Check if device appears: lsusb"
+          ]
+        }
+      }
+    }
+  ]
+}

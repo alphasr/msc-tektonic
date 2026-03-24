@@ -23,8 +23,14 @@ export async function analyzeTrack(
       bars: features.bars,
     };
 
-    // Save features with real waveform
-    await saveFeatures(track_id, summary, features.waveform);
+    // Save features with real waveform and frequency profiles
+    await saveFeatures(
+      track_id,
+      summary,
+      features.waveform,
+      features.barFrequencies,
+      features.phraseFrequencies
+    );
 
     return summary;
   } catch (error) {
@@ -37,7 +43,9 @@ export async function analyzeTrack(
 async function saveFeatures(
   track_id: string,
   summary: TrackSummary,
-  waveform: number[]
+  waveform: number[],
+  barFrequencies?: import('@/types').FrequencyProfile[],
+  phraseFrequencies?: import('@/types').FrequencyProfile[]
 ) {
   const featuresDir = getFeaturesDir(track_id);
   await fs.mkdir(featuresDir, { recursive: true });
@@ -70,6 +78,31 @@ async function saveFeatures(
     path.join(featuresDir, 'waveform.json'),
     JSON.stringify(waveform)
   );
+
+  // Save frequency profiles
+  if (barFrequencies && barFrequencies.length > 0) {
+    const barFreqData = barFrequencies.map((profile, index) => ({
+      barIndex: index,
+      profile,
+      timestamp: (index / summary.bars) * summary.duration,
+    }));
+    await fs.writeFile(
+      path.join(featuresDir, 'bar_frequencies.json'),
+      JSON.stringify({ bars: barFreqData })
+    );
+  }
+
+  if (phraseFrequencies && phraseFrequencies.length > 0) {
+    const phraseFreqData = phraseFrequencies.map((profile, index) => ({
+      phraseIndex: index,
+      profile,
+      timestamp: (index / summary.phrases) * summary.duration,
+    }));
+    await fs.writeFile(
+      path.join(featuresDir, 'phrase_frequencies.json'),
+      JSON.stringify({ phrases: phraseFreqData })
+    );
+  }
 }
 
 // Generate bar-level feature vectors from waveform
@@ -164,32 +197,40 @@ export function calculateEnergy(
 
 // Key compatibility check
 export function isKeyCompatible(keyA: string, keyB: string): boolean {
-  // Camelot wheel compatibility
-  // Same key: perfect
-  if (keyA === keyB) return true;
+  if (!keyA || !keyB) return false;
+  return keyScore(keyA, keyB) > 0;
+}
 
-  // Parse keys
+// Key score (0-1)
+export function keyScore(keyA: string, keyB: string): number {
+  if (!keyA || !keyB) return 0.0;
+  if (keyA === keyB) return 1.0;
+
   const numA = parseInt(keyA);
   const numB = parseInt(keyB);
   const letterA = keyA.slice(-1);
   const letterB = keyB.slice(-1);
 
-  // Adjacent keys (same number, different letter)
-  if (numA === numB && letterA !== letterB) return true;
+  // Relative Major/Minor (8A -> 8B)
+  if (numA === numB && letterA !== letterB) return 0.8;
 
-  // Neighboring keys (adjacent numbers, same letter)
+  // Same letter (minor to minor, or major to major)
   if (letterA === letterB) {
-    const diff = Math.abs(numA - numB);
-    if (diff === 1 || diff === 11) return true; // Wrap around
+    let diff = Math.abs(numA - numB);
+    if (diff === 11) diff = 1; // Wrap around 12 to 1
+    if (diff === 10) diff = 2; // Wrap around 11 to 1, 12 to 2
+
+    if (diff === 1) return 0.8; // Adjacent on wheel
+    if (diff === 2) return 0.6; // Energy Boost (+2 on wheel)
   }
 
-  return false;
-}
+  // Same root note (A Minor -> A Major) -> 8A to 11B (diff = 3, letter change)
+  if (letterA !== letterB) {
+    let diff = Math.abs(numA - numB);
+    if (diff > 6) diff = 12 - diff; // Wrap around distance
+    if (diff === 3) return 0.5; // Mood shift (Parallel scale)
+  }
 
-// Key score (0-1)
-export function keyScore(keyA: string, keyB: string): number {
-  if (keyA === keyB) return 1.0;
-  if (isKeyCompatible(keyA, keyB)) return 0.5;
   return 0.0;
 }
 
@@ -205,6 +246,8 @@ export async function loadFeatures(track_id: string): Promise<{
   phraseVecs: number[][];
   summary: TrackSummary;
   waveform?: number[];
+  barFrequencies?: import('@/types').BarFrequencyData[];
+  phraseFrequencies?: import('@/types').PhraseFrequencyData[];
 }> {
   const featuresDir = getFeaturesDir(track_id);
 
@@ -231,7 +274,39 @@ export async function loadFeatures(track_id: string): Promise<{
       // Waveform not available, will be undefined
     }
 
-    return { barVecs, phraseVecs, summary, waveform };
+    // Try to load frequency profiles if available
+    let barFrequencies: import('@/types').BarFrequencyData[] | undefined;
+    try {
+      const barFreqData = await fs.readFile(
+        path.join(featuresDir, 'bar_frequencies.json'),
+        'utf-8'
+      );
+      const parsed = JSON.parse(barFreqData);
+      barFrequencies = parsed.bars || [];
+    } catch {
+      // Frequency data not available
+    }
+
+    let phraseFrequencies: import('@/types').PhraseFrequencyData[] | undefined;
+    try {
+      const phraseFreqData = await fs.readFile(
+        path.join(featuresDir, 'phrase_frequencies.json'),
+        'utf-8'
+      );
+      const parsed = JSON.parse(phraseFreqData);
+      phraseFrequencies = parsed.phrases || [];
+    } catch {
+      // Frequency data not available
+    }
+
+    return {
+      barVecs,
+      phraseVecs,
+      summary,
+      waveform,
+      barFrequencies,
+      phraseFrequencies,
+    };
   } catch (error) {
     throw new Error(
       `Features not found for track ${track_id}, error: ${error}`

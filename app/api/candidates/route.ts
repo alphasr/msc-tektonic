@@ -4,7 +4,7 @@ import { generateCandidates } from "@/lib/candidates"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { fromTrack, toTrack, k = 5, mode = "both", scope = "phrase" } = body
+    const { fromTrack, toTrack, k = 5, mode = "both", scope = "phrase", strictKey = false, transitionLocation = 'standard' } = body
 
     if (!fromTrack || !toTrack) {
       return NextResponse.json(
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate candidates using actual analysis
-    const candidates = await generateCandidates(fromTrack, toTrack, k)
+    const candidates = await generateCandidates(fromTrack, toTrack, k, strictKey, transitionLocation === 'anywhere')
 
     return NextResponse.json(candidates)
   } catch (error: any) {

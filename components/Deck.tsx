@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Play, Pause, Square, SkipBack, SkipForward, RotateCcw, Repeat, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Track, DeckState } from "@/types"
-import { cn } from "@/lib/utils"
+import { cn, getCamelotColor } from "@/lib/utils"
 
 interface DeckProps {
   deck: DeckState
@@ -95,10 +95,10 @@ export default function Deck({
               <h3 className="text-xs font-semibold truncate">{deck.track.title}</h3>
               <div className="text-[10px] text-muted-foreground">
                 <div className="truncate">{deck.track.artist}</div>
-                <div className="flex gap-1.5 mt-0.5 text-[9px]">
-                  <span>{deck.track.bpm} BPM</span>
-                  <span>Key {deck.track.key}</span>
-                  <span>E{deck.track.energy}</span>
+                <div className="flex gap-2 mt-1 text-[10px] items-center">
+                  <span className="font-mono bg-background px-1.5 py-0.5 rounded border">{deck.track.bpm} <span className="text-[8px] text-muted-foreground">BPM</span></span>
+                  <span className="font-bold px-1.5 py-0.5 rounded text-white shadow-sm" style={{ backgroundColor: getCamelotColor(deck.track.key) }}>{deck.track.key}</span>
+                  <span className="text-muted-foreground flex items-center gap-0.5"><Zap className="w-2.5 h-2.5 text-orange-500"/> {deck.track.energy.toFixed(1)}</span>
                 </div>
               </div>
             </div>
@@ -153,24 +153,23 @@ export default function Deck({
         ) : (
           <>
             <div className="mb-2 flex-shrink-0">
-              <div className="text-sm font-semibold mb-1">No track loaded</div>
-              <div className="text-xs text-muted-foreground">
-                <div>Artist —</div>
-                <div className="flex gap-2 mt-0.5 text-[10px]">
-                  <span>BPM —</span>
-                  <span>Key —</span>
-                  <span>E—</span>
+              <div className="text-sm font-semibold mb-1 text-muted-foreground/50">Deck Empty</div>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <div className="opacity-50">—</div>
+                <div className="flex gap-2 mt-0.5 text-[10px] opacity-30">
+                  <span className="bg-background px-1.5 py-0.5 rounded border">--- BPM</span>
+                  <span className="px-1.5 py-0.5 rounded bg-muted">-- Key</span>
                 </div>
               </div>
             </div>
-            <div className="mb-2 flex gap-2 text-xs flex-shrink-0">
+            <div className="mb-2 flex gap-2 text-xs flex-shrink-0 opacity-30">
               <span>Elapsed 00:00</span>
               <span>Remaining —</span>
             </div>
-            <div className="h-16 w-full bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 rounded mb-2 flex items-center justify-center text-muted-foreground flex-shrink-0">
-              <div className="text-center text-xs">
-                <div>No waveform available</div>
-                <div className="text-[10px] mt-0.5">Load a track to begin</div>
+            <div className="h-16 w-full bg-black/40 ring-1 ring-white/5 rounded mb-2 flex flex-col items-center justify-center text-muted-foreground flex-shrink-0 relative overflow-hidden backdrop-blur-sm shadow-inner">
+              <div className="text-center text-xs relative z-10">
+                <div className="font-semibold text-white/40 tracking-widest uppercase text-[10px]">No Track Loaded</div>
+                <div className="text-[9px] mt-0.5 opacity-40">Double-click library to load</div>
               </div>
             </div>
           </>
@@ -182,11 +181,13 @@ export default function Deck({
               onClick={deck.isPlaying ? onPause : onPlay}
               size="sm"
               className={cn(
-                "flex-1 h-7",
-                isDeckA ? "bg-deck-a hover:bg-deck-a/90" : "bg-deck-b hover:bg-deck-b/90"
+                "flex-1 h-8 rounded-md transition-all border",
+                deck.isPlaying && isDeckA ? "bg-deck-a/20 text-deck-a border-deck-a/50 shadow-[0_0_12px_rgba(168,85,247,0.3)] hover:bg-deck-a/30" : 
+                deck.isPlaying && !isDeckA ? "bg-deck-b/20 text-deck-b border-deck-b/50 shadow-[0_0_12px_rgba(239,68,68,0.3)] hover:bg-deck-b/30" :
+                "bg-card hover:bg-muted border-border"
               )}
             >
-              {deck.isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              {deck.isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 ml-0.5 fill-current" />}
             </Button>
             <Button variant="outline" size="sm" onClick={onCue} className="h-7 w-7 p-0">
               <RotateCcw className="w-2.5 h-2.5" />
@@ -202,7 +203,7 @@ export default function Deck({
           <Button
             variant="outline"
             size="sm"
-            className="w-full h-6 text-[10px]"
+            className="w-full h-7 text-[10px] bg-background hover:bg-muted font-semibold tracking-wider uppercase transition-colors"
             onClick={onLoadTrack}
           >
             Load Track
