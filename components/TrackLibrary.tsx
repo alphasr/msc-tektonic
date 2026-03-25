@@ -157,9 +157,9 @@ export default function TrackLibrary({
                 <div
                   key={track.id}
                   className={cn(
-                    'group p-2 rounded border bg-card/50 hover:bg-card hover:border-border/80 cursor-pointer transition-all duration-200',
+                    'group p-2 rounded-lg border bg-card/40 backdrop-blur-md hover:bg-card/60 hover:border-white/10 border-white/5 cursor-pointer transition-all duration-300 shadow-md hover:shadow-xl',
                     selectedTrack?.id === track.id &&
-                      'bg-primary/5 border-primary/50'
+                      'bg-primary/10 border-primary/50 shadow-[0_0_15px_rgba(0,240,255,0.15)]'
                   )}
                   onClick={() => setSelectedTrack(track)}
                   onDoubleClick={() => onLoadTrack(track, 'A')}

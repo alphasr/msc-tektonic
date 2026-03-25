@@ -210,6 +210,10 @@ export interface Playlist {
   segments: PlaylistSegment[];
   createdAt: string;
   totalDuration: number;
+  generationMetadata?: {
+    reasoning?: string;
+    [key: string]: any;
+  };
 }
 
 export interface SegmentSuggestion {

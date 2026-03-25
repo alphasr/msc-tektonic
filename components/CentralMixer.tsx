@@ -18,6 +18,110 @@ interface CentralMixerProps {
   onDeckBEQChange: (band: "low" | "mid" | "high", value: number) => void
 }
 
+function LevelMeter({ level, mounted }: { level: number; mounted: boolean }) {
+  const bars = Math.floor(level / 10)
+  const meterData = Array(10).fill(0).map((_, i) => i < bars)
+
+  return (
+    <div className="flex flex-col-reverse gap-[1px] w-2">
+      {mounted ? (
+        meterData.map((active, i) => (
+          <div
+            key={i}
+            className={cn(
+              "w-full h-[3px] rounded-[1px] transition-all duration-75",
+              i < 6 ? "bg-emerald-500" : i < 8 ? "bg-amber-400" : "bg-red-500",
+              active ? "opacity-100" : "opacity-15"
+            )}
+          />
+        ))
+      ) : (
+        Array(10).fill(0).map((_, i) => (
+          <div key={i} className="w-full h-[3px] rounded-[1px] opacity-15 bg-muted-foreground" />
+        ))
+      )}
+    </div>
+  )
+}
+
+function ChannelStrip({
+  label,
+  color,
+  eq,
+  volume,
+  level,
+  mounted,
+  onEQChange,
+  onVolumeChange,
+}: {
+  label: string
+  color: "deck-a" | "deck-b" | "muted-foreground"
+  eq: { low: number; mid: number; high: number }
+  volume: number
+  level: number
+  mounted: boolean
+  onEQChange: (band: "low" | "mid" | "high", value: number) => void
+  onVolumeChange: (volume: number) => void
+}) {
+  const formatDB = (value: number) => {
+    return value >= 0 ? `+${value.toFixed(0)}` : value.toFixed(0)
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
+      {/* Channel Label */}
+      <div className={cn(
+        "text-[9px] font-bold tracking-[0.15em] uppercase",
+        color === "deck-a" ? "text-deck-a" : color === "deck-b" ? "text-deck-b" : "text-muted-foreground"
+      )}>
+        {label}
+      </div>
+
+      {/* EQ Section - 3 horizontal rows */}
+      <div className="w-full space-y-1 bg-background/30 rounded-md p-1.5 border border-white/[0.03]">
+        {(["high", "mid", "low"] as const).map((band) => (
+          <div key={band} className="flex items-center gap-1.5">
+            <span className="text-[8px] text-muted-foreground w-4 text-right uppercase font-medium">
+              {band === "high" ? "Hi" : band === "mid" ? "Md" : "Lo"}
+            </span>
+            <Slider
+              value={[eq[band]]}
+              onValueChange={([value]) => onEQChange(band, value)}
+              min={-12}
+              max={12}
+              step={0.5}
+              className="flex-1"
+            />
+            <span className="text-[7px] font-mono text-muted-foreground/60 w-5 text-right">
+              {formatDB(eq[band])}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Volume Fader + Level Meter */}
+      <div className="flex items-center gap-1.5 flex-1 min-h-0 w-full justify-center py-1">
+        <LevelMeter level={level} mounted={mounted} />
+        <div className="flex flex-col items-center gap-0.5">
+          <Slider
+            orientation="vertical"
+            value={[volume]}
+            onValueChange={([value]) => onVolumeChange(value)}
+            min={0}
+            max={100}
+            step={0.5}
+            className="h-[80px]"
+          />
+          <span className="text-[8px] font-mono text-muted-foreground/60">
+            {formatDB(volume - 50)}
+          </span>
+        </div>
+        <LevelMeter level={level} mounted={mounted} />
+      </div>
+    </div>
+  )
+}
+
 export default function CentralMixer({
   deckA,
   deckB,
@@ -39,14 +143,12 @@ export default function CentralMixer({
 
   useEffect(() => {
     setMounted(true)
-    // Initialize level meters based on volume, with some variation
     setLevelMeters({
       deckA: Math.max(0, Math.min(100, deckA.volume + (Math.random() * 20 - 10))),
       master: Math.max(0, Math.min(100, masterVolume + (Math.random() * 20 - 10))),
       deckB: Math.max(0, Math.min(100, deckB.volume + (Math.random() * 20 - 10))),
     })
 
-    // Update level meters periodically to simulate audio levels
     const interval = setInterval(() => {
       setLevelMeters({
         deckA: Math.max(0, Math.min(100, deckA.volume + (Math.random() * 20 - 10))),
@@ -58,273 +160,80 @@ export default function CentralMixer({
     return () => clearInterval(interval)
   }, [deckA.volume, deckB.volume, masterVolume])
 
-  const formatDB = (value: number) => {
-    return value >= 0 ? `+${value.toFixed(1)}` : value.toFixed(1)
-  }
-
-  const formatPercent = (value: number) => {
-    return `${Math.round(value)}%`
-  }
-
-  const getLevelMeter = (level: number) => {
-    const bars = Math.floor(level / 10)
-    return Array(12).fill(0).map((_, i) => i < bars)
-  }
+  const formatPercent = (value: number) => `${Math.round(value)}%`
 
   return (
-    <div className="flex flex-col h-full p-1.5 rounded-lg border bg-card overflow-hidden">
-      <div className="mb-1 flex-shrink-0">
-        <h2 className="text-xs font-bold">CENTRAL MIXER</h2>
-        <p className="text-[9px] text-muted-foreground">3-band EQ, FX & metering</p>
+    <div className="flex flex-col h-full p-2 rounded-xl border bg-card/40 backdrop-blur-md shadow-2xl overflow-hidden border-white/5">
+      {/* Header */}
+      <div className="flex-shrink-0 text-center border-b border-white/5 pb-1.5 mb-1.5">
+        <h2 className="text-[9px] font-bold tracking-[0.2em] text-muted-foreground uppercase">Mixer</h2>
       </div>
 
-      <div className="flex-1 grid grid-cols-3 gap-1.5 min-h-0 mb-1 overflow-hidden">
-        {/* Deck A EQ */}
-        <div className="flex flex-col items-center min-w-0 overflow-hidden bg-background/50 rounded p-1 border shadow-inner">
-          <div className="text-[9px] font-bold mb-0.5 text-deck-a tracking-widest">DECK A</div>
-          <div className="flex flex-col gap-0.5 flex-1 justify-center min-h-0">
-            <div className="flex flex-col items-center">
-              <div className="text-[9px] mb-0.5 text-muted-foreground">Hi</div>
-              <Slider
-                orientation="vertical"
-                value={[deckA.eq.high]}
-                onValueChange={([value]) => onDeckAEQChange("high", value)}
-                min={-12}
-                max={12}
-                step={0.5}
-                className="h-16"
-              />
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="text-[9px] mb-0.5 text-muted-foreground">Mid</div>
-              <Slider
-                orientation="vertical"
-                value={[deckA.eq.mid]}
-                onValueChange={([value]) => onDeckAEQChange("mid", value)}
-                min={-12}
-                max={12}
-                step={0.5}
-                className="h-16"
-              />
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="text-[9px] mb-0.5 text-muted-foreground">Low</div>
-              <Slider
-                orientation="vertical"
-                value={[deckA.eq.low]}
-                onValueChange={([value]) => onDeckAEQChange("low", value)}
-                min={-12}
-                max={12}
-                step={0.5}
-                className="h-16"
-              />
-            </div>
-          </div>
-        </div>
+      {/* Channel Strips */}
+      <div className="flex-1 min-h-0 flex gap-1.5 overflow-hidden">
+        {/* Deck A Channel */}
+        <ChannelStrip
+          label="A"
+          color="deck-a"
+          eq={deckA.eq}
+          volume={deckA.volume}
+          level={levelMeters.deckA}
+          mounted={mounted}
+          onEQChange={onDeckAEQChange}
+          onVolumeChange={onDeckAVolumeChange}
+        />
 
-        {/* Master FX */}
-        <div className="flex flex-col items-center min-w-0 overflow-hidden bg-background/50 rounded p-1 border shadow-inner">
-          <div className="text-[9px] font-bold mb-0.5 tracking-widest text-muted-foreground">MASTER</div>
-          <div className="flex flex-col gap-0.5 flex-1 justify-center min-h-0">
-            <div className="flex flex-col items-center">
-              <div className="text-[9px] mb-0.5 text-muted-foreground">Send</div>
-              <Slider
-                orientation="vertical"
-                value={[50]}
-                min={0}
-                max={100}
-                step={1}
-                className="h-16"
-              />
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="text-[9px] mb-0.5 text-muted-foreground">FX</div>
-              <Slider
-                orientation="vertical"
-                value={[50]}
-                min={0}
-                max={100}
-                step={1}
-                className="h-16"
-              />
-            </div>
-          </div>
-        </div>
+        {/* Divider */}
+        <div className="w-px bg-white/5 self-stretch my-1 flex-shrink-0" />
 
-        {/* Deck B EQ */}
-        <div className="flex flex-col items-center min-w-0 overflow-hidden bg-background/50 rounded p-1 border shadow-inner">
-          <div className="text-[9px] font-bold mb-0.5 text-deck-b tracking-widest">DECK B</div>
-          <div className="flex flex-col gap-0.5 flex-1 justify-center min-h-0">
-            <div className="flex flex-col items-center">
-              <div className="text-[9px] mb-0.5 text-muted-foreground">Hi</div>
-              <Slider
-                orientation="vertical"
-                value={[deckB.eq.high]}
-                onValueChange={([value]) => onDeckBEQChange("high", value)}
-                min={-12}
-                max={12}
-                step={0.5}
-                className="h-16"
-              />
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="text-[9px] mb-0.5 text-muted-foreground">Mid</div>
-              <Slider
-                orientation="vertical"
-                value={[deckB.eq.mid]}
-                onValueChange={([value]) => onDeckBEQChange("mid", value)}
-                min={-12}
-                max={12}
-                step={0.5}
-                className="h-16"
-              />
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="text-[9px] mb-0.5 text-muted-foreground">Low</div>
-              <Slider
-                orientation="vertical"
-                value={[deckB.eq.low]}
-                onValueChange={([value]) => onDeckBEQChange("low", value)}
-                min={-12}
-                max={12}
-                step={0.5}
-                className="h-16"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+        {/* Master Channel */}
+        <ChannelStrip
+          label="M"
+          color="muted-foreground"
+          eq={{ low: 0, mid: 0, high: 0 }}
+          volume={masterVolume}
+          level={levelMeters.master}
+          mounted={mounted}
+          onEQChange={() => {}} 
+          onVolumeChange={onMasterVolumeChange}
+        />
 
-      {/* Volume Faders */}
-      <div className="grid grid-cols-3 gap-1.5 mb-1 flex-shrink-0 overflow-hidden">
-        <div className="flex flex-col items-center min-w-0 bg-background/50 rounded pt-1 pb-2 border shadow-inner">
-          <div className="text-[10px] mb-0.5 text-deck-a font-bold tracking-widest">A</div>
-          <div className="flex-1 flex gap-3 items-center justify-center min-h-[80px] px-2 w-full">
-            <Slider
-              orientation="vertical"
-              value={[deckA.volume]}
-              onValueChange={([value]) => onDeckAVolumeChange(value)}
-              min={0}
-              max={100}
-              step={0.1}
-              className="h-24"
-            />
-            <div className="text-[9px] font-mono text-muted-foreground w-6 text-right">{formatDB(deckA.volume - 50)}</div>
-            <div className="flex flex-col-reverse gap-[2px]">
-              {mounted ? (
-                getLevelMeter(levelMeters.deckA).map((active, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      "w-3 h-1 rounded-sm transition-all duration-75",
-                      i < 8 ? "bg-[#39d57a]" : i < 10 ? "bg-[#ffc562]" : "bg-[#fc4126]",
-                      active ? "opacity-100 shadow-[0_0_4px_currentColor]" : "opacity-20 shadow-none bg-muted-foreground hidden lg:block"
-                    )}
-                  />
-                ))
-              ) : (
-                Array(12).fill(0).map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-3 h-1 rounded-sm opacity-20 bg-muted-foreground hidden lg:block"
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Divider */}
+        <div className="w-px bg-white/5 self-stretch my-1 flex-shrink-0" />
 
-        <div className="flex flex-col items-center min-w-0 bg-background/50 rounded pt-1 pb-2 border shadow-inner">
-          <div className="text-[10px] mb-0.5 font-bold tracking-widest text-muted-foreground">M</div>
-          <div className="flex-1 flex gap-3 items-center justify-center min-h-[80px] px-2 w-full">
-            <Slider
-              orientation="vertical"
-              value={[masterVolume]}
-              onValueChange={([value]) => onMasterVolumeChange(value)}
-              min={0}
-              max={100}
-              step={0.1}
-              className="h-24"
-            />
-            <div className="text-[9px] font-mono text-muted-foreground w-6 text-right">{formatDB(masterVolume - 50)}</div>
-            <div className="flex flex-col-reverse gap-[2px]">
-              {mounted ? (
-                getLevelMeter(levelMeters.master).map((active, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      "w-3 h-1 rounded-sm transition-all duration-75",
-                      i < 8 ? "bg-[#39d57a]" : i < 10 ? "bg-[#ffc562]" : "bg-[#fc4126]",
-                      active ? "opacity-100 shadow-[0_0_4px_currentColor]" : "opacity-20 shadow-none bg-muted-foreground hidden lg:block"
-                    )}
-                  />
-                ))
-              ) : (
-                Array(12).fill(0).map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-3 h-1 rounded-sm opacity-20 bg-muted-foreground hidden lg:block"
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col items-center min-w-0 bg-background/50 rounded pt-1 pb-2 border shadow-inner">
-          <div className="text-[10px] mb-0.5 text-deck-b font-bold tracking-widest">B</div>
-          <div className="flex-1 flex gap-3 items-center justify-center min-h-[80px] px-2 w-full">
-            <Slider
-              orientation="vertical"
-              value={[deckB.volume]}
-              onValueChange={([value]) => onDeckBVolumeChange(value)}
-              min={0}
-              max={100}
-              step={0.1}
-              className="h-24"
-            />
-            <div className="text-[9px] font-mono text-muted-foreground w-6 text-right">{formatDB(deckB.volume - 50)}</div>
-            <div className="flex flex-col-reverse gap-[2px]">
-              {mounted ? (
-                getLevelMeter(levelMeters.deckB).map((active, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      "w-3 h-1 rounded-sm transition-all duration-75",
-                      i < 8 ? "bg-[#39d57a]" : i < 10 ? "bg-[#ffc562]" : "bg-[#fc4126]",
-                      active ? "opacity-100 shadow-[0_0_4px_currentColor]" : "opacity-20 shadow-none bg-muted-foreground hidden lg:block"
-                    )}
-                  />
-                ))
-              ) : (
-                Array(12).fill(0).map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-3 h-1 rounded-sm opacity-20 bg-muted-foreground hidden lg:block"
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Deck B Channel */}
+        <ChannelStrip
+          label="B"
+          color="deck-b"
+          eq={deckB.eq}
+          volume={deckB.volume}
+          level={levelMeters.deckB}
+          mounted={mounted}
+          onEQChange={onDeckBEQChange}
+          onVolumeChange={onDeckBVolumeChange}
+        />
       </div>
 
       {/* Crossfader */}
-      <div className="flex-shrink-0">
-        <div className="text-[9px] mb-0.5 text-center text-muted-foreground">Crossfader</div>
-        <Slider
-          value={[crossfader]}
-          onValueChange={([value]) => onCrossfaderChange(value)}
-          min={-100}
-          max={100}
-          step={1}
-          className="w-full"
-        />
-        <div className="text-[9px] text-center mt-0.5 text-muted-foreground">
-          {crossfader < 0 ? `A ${formatPercent(Math.abs(crossfader))}` : crossfader > 0 ? `B ${formatPercent(crossfader)}` : "Center"}
+      <div className="flex-shrink-0 pt-2 mt-1 border-t border-white/5">
+        <div className="flex items-center gap-2">
+          <span className="text-[8px] font-bold text-deck-a tracking-wider">A</span>
+          <div className="flex-1">
+            <Slider
+              value={[crossfader]}
+              onValueChange={([value]) => onCrossfaderChange(value)}
+              min={-100}
+              max={100}
+              step={1}
+              className="w-full"
+            />
+          </div>
+          <span className="text-[8px] font-bold text-deck-b tracking-wider">B</span>
+        </div>
+        <div className="text-[8px] text-center mt-0.5 text-muted-foreground/50">
+          {crossfader < -5 ? `← A ${formatPercent(Math.abs(crossfader))}` : crossfader > 5 ? `B ${formatPercent(crossfader)} →` : "Center"}
         </div>
       </div>
     </div>
   )
 }
-

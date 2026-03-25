@@ -132,67 +132,58 @@ export default function Home() {
     setIsMounted(true);
   }, []);
 
+  // Timestamp of last user-initiated play/pause/stop action.
+  // The progress interval will NOT override isPlaying state for 200ms after a user action,
+  // preventing the race where the audio engine hasn't processed the command yet.
+  const lastUserActionRef = useRef<number>(0);
+
   // Handler functions (must be defined before MIDI setup)
   const handlePlay = (deck: 'A' | 'B') => {
+    const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
     if (!deckRef) return;
 
-    // Check if track is loaded
-    if (!mixerState[deck === 'A' ? 'deckA' : 'deckB'].track) {
-      console.warn(`Cannot play: No track loaded on deck ${deck}`);
-      return;
-    }
+    // Read current state synchronously to check for track
+    setMixerState((prev) => {
+      if (!prev[deckKey].track) {
+        console.warn(`Cannot play: No track loaded on deck ${deck}`);
+        return prev;
+      }
+      return {
+        ...prev,
+        [deckKey]: { ...prev[deckKey], isPlaying: true },
+      };
+    });
 
-    try {
-      deckRef.play();
-      // Immediately update state optimistically
-      setMixerState((prev) => ({
-        ...prev,
-        [deck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[deck === 'A' ? 'deckA' : 'deckB'],
-          isPlaying: true,
-        },
-      }));
-    } catch (error) {
-      console.error(`Error playing deck ${deck}:`, error);
-      // Revert state on error
-      setMixerState((prev) => ({
-        ...prev,
-        [deck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[deck === 'A' ? 'deckA' : 'deckB'],
-          isPlaying: false,
-        },
-      }));
-    }
+    // Side effect OUTSIDE the updater
+    lastUserActionRef.current = Date.now();
+    deckRef.play();
   };
 
   const handlePause = (deck: 'A' | 'B') => {
+    const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
     if (!deckRef) return;
 
-    try {
-      deckRef.pause();
-      // Immediately update state optimistically
-      setMixerState((prev) => ({
-        ...prev,
-        [deck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[deck === 'A' ? 'deckA' : 'deckB'],
-          isPlaying: false,
-        },
-      }));
-    } catch (error) {
-      console.error(`Error pausing deck ${deck}:`, error);
-    }
+    // Side effect first, then update state
+    lastUserActionRef.current = Date.now();
+    deckRef.pause();
+    setMixerState((prev) => ({
+      ...prev,
+      [deckKey]: { ...prev[deckKey], isPlaying: false },
+    }));
   };
 
   const handleStop = (deck: 'A' | 'B') => {
+    const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
     if (deckRef) {
+      lastUserActionRef.current = Date.now();
       deckRef.stop();
       setMixerState((prev) => ({
         ...prev,
-        [deck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[deck === 'A' ? 'deckA' : 'deckB'],
+        [deckKey]: {
+          ...prev[deckKey],
           isPlaying: false,
           currentTime: 0,
         },
@@ -201,14 +192,16 @@ export default function Home() {
   };
 
   const handleCue = (deck: 'A' | 'B') => {
+    const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
     if (deckRef) {
+      lastUserActionRef.current = Date.now();
       deckRef.seek(0);
       deckRef.pause();
       setMixerState((prev) => ({
         ...prev,
-        [deck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[deck === 'A' ? 'deckA' : 'deckB'],
+        [deckKey]: {
+          ...prev[deckKey],
           isPlaying: false,
           currentTime: 0,
         },
@@ -511,44 +504,66 @@ export default function Home() {
     }
 
     progressInterval.current = setInterval(() => {
+      // Don't override isPlaying state within 200ms of a user action
+      // (the audio engine may not have processed the command yet)
+      const isInDebounceWindow = Date.now() - lastUserActionRef.current < 200;
+
       setMixerState((prev) => {
-        const newState = { ...prev };
-        let changed = false;
+        let deckAUpdates: Partial<DeckState> | null = null;
+        let deckBUpdates: Partial<DeckState> | null = null;
 
         if (deckARef.current) {
-          const actualIsPlaying = deckARef.current.isPlaying();
           const actualCurrentTime = deckARef.current.getCurrentTime();
 
-          if (actualIsPlaying !== prev.deckA.isPlaying) {
-            newState.deckA.isPlaying = actualIsPlaying;
-            changed = true;
+          // Only sync isPlaying from audio engine if NOT in debounce window
+          if (!isInDebounceWindow) {
+            const actualIsPlaying = deckARef.current.isPlaying();
+            if (actualIsPlaying !== prev.deckA.isPlaying) {
+              deckAUpdates = { ...(deckAUpdates || {}), isPlaying: actualIsPlaying };
+            }
           }
-          if (Math.abs(actualCurrentTime - prev.deckA.currentTime) > 0.1) {
-            newState.deckA.currentTime = actualCurrentTime;
-            changed = true;
+
+          if (Math.abs(actualCurrentTime - prev.deckA.currentTime) > 0.05) {
+            deckAUpdates = { ...(deckAUpdates || {}), currentTime: actualCurrentTime };
+          }
+          // Auto-stop at end of track
+          if (prev.deckA.track && actualCurrentTime >= prev.deckA.track.duration - 0.1 && prev.deckA.isPlaying) {
+            deckAUpdates = { ...(deckAUpdates || {}), isPlaying: false, currentTime: 0 };
+            deckARef.current.stop();
           }
         }
         if (deckBRef.current) {
-          const actualIsPlaying = deckBRef.current.isPlaying();
           const actualCurrentTime = deckBRef.current.getCurrentTime();
 
-          if (actualIsPlaying !== prev.deckB.isPlaying) {
-            newState.deckB.isPlaying = actualIsPlaying;
-            changed = true;
+          if (!isInDebounceWindow) {
+            const actualIsPlaying = deckBRef.current.isPlaying();
+            if (actualIsPlaying !== prev.deckB.isPlaying) {
+              deckBUpdates = { ...(deckBUpdates || {}), isPlaying: actualIsPlaying };
+            }
           }
-          if (Math.abs(actualCurrentTime - prev.deckB.currentTime) > 0.1) {
-            newState.deckB.currentTime = actualCurrentTime;
-            changed = true;
+
+          if (Math.abs(actualCurrentTime - prev.deckB.currentTime) > 0.05) {
+            deckBUpdates = { ...(deckBUpdates || {}), currentTime: actualCurrentTime };
+          }
+          if (prev.deckB.track && actualCurrentTime >= prev.deckB.track.duration - 0.1 && prev.deckB.isPlaying) {
+            deckBUpdates = { ...(deckBUpdates || {}), isPlaying: false, currentTime: 0 };
+            deckBRef.current.stop();
           }
         }
 
-        // Only return new state if something changed to avoid unnecessary re-renders
-        return changed ? newState : prev;
+        if (!deckAUpdates && !deckBUpdates) return prev;
+
+        return {
+          ...prev,
+          deckA: deckAUpdates ? { ...prev.deckA, ...deckAUpdates } : prev.deckA,
+          deckB: deckBUpdates ? { ...prev.deckB, ...deckBUpdates } : prev.deckB,
+        };
       });
-    }, 100);
+    }, 50);
   };
 
   const loadTrack = async (track: Track, deck: 'A' | 'B') => {
+    const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
     if (!deckRef) {
       console.error(`Deck ${deck} not initialized`);
@@ -559,11 +574,19 @@ export default function Home() {
     try {
       console.log(`Loading track "${track.title}" into Deck ${deck}...`);
 
+      // Stop current playback before loading new track
+      if (deckRef.isPlaying()) {
+        deckRef.stop();
+      }
+
+      // Clear previous event handlers to prevent leaks
+      deckRef.off('end');
+
       // Update state immediately to show loading
       setMixerState((prev) => ({
         ...prev,
-        [deck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[deck === 'A' ? 'deckA' : 'deckB'],
+        [deckKey]: {
+          ...prev[deckKey],
           track,
           currentTime: 0,
           isPlaying: false,
@@ -573,22 +596,25 @@ export default function Home() {
       const audioUrl = `/api/audio/${track.id}`;
       await deckRef.load(audioUrl);
 
-      // Set up event handlers
+      // Set up event handler for track end
       deckRef.on('end', () => {
         setMixerState((prev) => ({
           ...prev,
-          [deck === 'A' ? 'deckA' : 'deckB']: {
-            ...prev[deck === 'A' ? 'deckA' : 'deckB'],
+          [deckKey]: {
+            ...prev[deckKey],
             isPlaying: false,
             currentTime: 0,
           },
         }));
       });
 
-      // Apply current settings
-      const deckState = deck === 'A' ? mixerState.deckA : mixerState.deckB;
-      deckRef.setVolume(deckState.volume);
-      deckRef.setEQ(deckState.eq);
+      // Apply current volume and EQ using functional updater to read fresh state
+      setMixerState((prev) => {
+        const currentDeckState = prev[deckKey];
+        deckRef.setVolume(currentDeckState.volume);
+        deckRef.setEQ(currentDeckState.eq);
+        return prev; // No state change, just read
+      });
 
       console.log(
         `✅ Track "${track.title}" loaded successfully into Deck ${deck}`
@@ -603,8 +629,8 @@ export default function Home() {
       // Clear the track from state on error
       setMixerState((prev) => ({
         ...prev,
-        [deck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[deck === 'A' ? 'deckA' : 'deckB'],
+        [deckKey]: {
+          ...prev[deckKey],
           track: null,
           isPlaying: false,
           currentTime: 0,
@@ -614,24 +640,41 @@ export default function Home() {
   };
 
   const handleEject = (deck: 'A' | 'B') => {
+    const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
     if (deckRef) {
+      // Clear event handlers before disposing
+      deckRef.off('end');
+      deckRef.stop();
       deckRef.dispose();
+
+      // Recreate the deck audio instance
+      const newDeck = audioManagerRef.current?.createDeck(deck) || null;
       if (deck === 'A') {
-        deckARef.current = audioManagerRef.current?.createDeck('A') || null;
+        deckARef.current = newDeck;
       } else {
-        deckBRef.current = audioManagerRef.current?.createDeck('B') || null;
+        deckBRef.current = newDeck;
       }
-      setMixerState((prev) => ({
-        ...prev,
-        [deck === 'A' ? 'deckA' : 'deckB']: {
-          track: null,
-          isPlaying: false,
-          currentTime: 0,
-          volume: prev[deck === 'A' ? 'deckA' : 'deckB'].volume,
-          eq: prev[deck === 'A' ? 'deckA' : 'deckB'].eq,
-        },
-      }));
+
+      // Preserve volume and EQ, clear track
+      setMixerState((prev) => {
+        const prevDeck = prev[deckKey];
+        // Apply preserved settings to new deck instance
+        if (newDeck) {
+          newDeck.setVolume(prevDeck.volume);
+          newDeck.setEQ(prevDeck.eq);
+        }
+        return {
+          ...prev,
+          [deckKey]: {
+            track: null,
+            isPlaying: false,
+            currentTime: 0,
+            volume: prevDeck.volume,
+            eq: { ...prevDeck.eq },
+          },
+        };
+      });
     }
   };
 
@@ -914,7 +957,7 @@ export default function Home() {
       <StatusBar status={systemStatus} onRetry={fetchSystemStatus} />
 
       {/* Live Mode Toggle */}
-      <div className='border-b bg-card px-4 py-2'>
+      <div className='border-b border-white/5 bg-background/50 backdrop-blur-md px-4 py-2'>
         <div className='flex items-center justify-between'>
           <div className='flex items-center gap-4'>
             <Label className='text-sm font-semibold'>Mode:</Label>
@@ -947,9 +990,9 @@ export default function Home() {
       </div>
 
       <div className='flex-1 overflow-hidden min-h-0 flex flex-col'>
-        <div className='flex-1 min-h-0 flex flex-col gap-1.5 p-1.5'>
-          {/* Top Row: Decks, Mixer, and Live Mode Panels */}
-          <div className='flex-1 min-h-0'>
+        <PanelGroup direction='vertical' className='flex-1'>
+          <Panel defaultSize={65} minSize={40} className='min-h-0 p-2 pb-0'>
+          <div className='h-full'>
             <PanelGroup direction='horizontal' className='h-full'>
               {/* Segment Suggestions (Live Mode) */}
               {liveMode === 'live' && (
@@ -976,7 +1019,7 @@ export default function Home() {
                       }
                     />
                   </Panel>
-                  <PanelResizeHandle className='w-1.5 bg-border hover:bg-primary/20 transition-colors cursor-col-resize' />
+                  <PanelResizeHandle className='w-1.5 bg-white/5 mx-1 rounded-full hover:bg-primary/20 transition-colors cursor-col-resize' />
                 </>
               )}
 
@@ -1071,7 +1114,7 @@ export default function Home() {
               {/* Playlist Builder (Live Mode) */}
               {liveMode === 'live' && playlistManagerRef.current && (
                 <>
-                  <PanelResizeHandle className='w-1.5 bg-border hover:bg-primary/20 transition-colors cursor-col-resize' />
+                  <PanelResizeHandle className='w-1.5 bg-white/5 mx-1 rounded-full hover:bg-primary/20 transition-colors cursor-col-resize' />
                   <Panel
                     defaultSize={20}
                     minSize={15}
@@ -1087,75 +1130,71 @@ export default function Home() {
               )}
             </PanelGroup>
           </div>
-          {/* Bottom Row: Library and Recommendations (Tabs with Horizontal Resize) */}
-          <div className='h-[240px] flex-shrink-0'>
-            <PanelGroup direction='horizontal' className='h-full'>
-              <Panel
-                defaultSize={100}
-                minSize={30}
-                className='min-w-0 min-h-0 overflow-hidden'
-              >
-                <Tabs defaultValue='library' className='h-full flex flex-col'>
-                  <TabsList className='w-full h-7 rounded-none border-b flex-shrink-0'>
-                    <TabsTrigger
-                      value='library'
-                      className='text-[10px] px-3 h-6'
-                    >
-                      Library
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value='ai-search'
-                      className='text-[10px] px-3 h-6'
-                    >
-                      AI Search
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value='recommendations'
-                      className='text-[10px] px-3 h-6'
-                    >
-                      Recommendations
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent
+          </Panel>
+          <PanelResizeHandle className='h-1.5 bg-white/5 my-0.5 mx-2 rounded-full hover:bg-primary/20 transition-colors cursor-row-resize' />
+          {/* Bottom Row: Library and Recommendations */}
+          <Panel defaultSize={35} minSize={20} className='min-h-0 px-2 pb-2'>
+            <div className='h-full rounded-xl border border-white/5 bg-card/30 backdrop-blur-md overflow-hidden'>
+              <Tabs defaultValue='library' className='h-full flex flex-col'>
+                <TabsList className='w-full h-8 rounded-none border-b border-white/5 flex-shrink-0 bg-transparent'>
+                  <TabsTrigger
                     value='library'
-                    className='flex-1 mt-0 min-h-0 overflow-hidden'
+                    className='text-[10px] px-3 h-6'
                   >
-                    <TrackLibrary
-                  tracks={tracks}
-                  onLoadTrack={loadTrack}
-                  onRefresh={fetchTracks}
-                  currentKey={getActiveKey()}
-                />
-                  </TabsContent>
-                  <TabsContent
+                    Library
+                  </TabsTrigger>
+                  <TabsTrigger
                     value='ai-search'
-                    className='flex-1 mt-0 min-h-0 overflow-hidden'
+                    className='text-[10px] px-3 h-6'
                   >
-                    <NaturalLanguageQuery
-                      onLoadTrack={loadTrack}
-                      currentTrackId={
-                        mixerState.deckA.track?.id ||
-                        mixerState.deckB.track?.id ||
-                        undefined
-                      }
-                    />
-                  </TabsContent>
-                  <TabsContent
+                    AI Search
+                  </TabsTrigger>
+                  <TabsTrigger
                     value='recommendations'
-                    className='flex-1 mt-0 min-h-0 overflow-hidden'
+                    className='text-[10px] px-3 h-6'
                   >
-                    <TrackRecommendations
-                      deckA={mixerState.deckA}
-                      deckB={mixerState.deckB}
-                      tracks={tracks}
-                      onLoadTrack={loadTrack}
-                    />
-                  </TabsContent>
-                </Tabs>
-              </Panel>
-            </PanelGroup>
-          </div>
-        </div>
+                    Recommendations
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent
+                  value='library'
+                  className='flex-1 mt-0 min-h-0 overflow-hidden'
+                >
+                  <TrackLibrary
+                    tracks={tracks}
+                    onLoadTrack={loadTrack}
+                    onRefresh={fetchTracks}
+                    currentKey={getActiveKey()}
+                  />
+                </TabsContent>
+                <TabsContent
+                  value='ai-search'
+                  className='flex-1 mt-0 min-h-0 overflow-hidden'
+                >
+                  <NaturalLanguageQuery
+                    onLoadTrack={loadTrack}
+                    currentTrackId={
+                      mixerState.deckA.track?.id ||
+                      mixerState.deckB.track?.id ||
+                      undefined
+                    }
+                  />
+                </TabsContent>
+                <TabsContent
+                  value='recommendations'
+                  className='flex-1 mt-0 min-h-0 overflow-hidden'
+                >
+                  <TrackRecommendations
+                    deckA={mixerState.deckA}
+                    deckB={mixerState.deckB}
+                    tracks={tracks}
+                    onLoadTrack={loadTrack}
+                  />
+                </TabsContent>
+              </Tabs>
+            </div>
+          </Panel>
+        </PanelGroup>
       </div>
     </div>
   );

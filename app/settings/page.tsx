@@ -369,11 +369,12 @@ export default function SettingsPage() {
                                     </div>
                                     {downloadUrl && (
                                       <div>
-                                        <Button asChild>
+                                        <Button className="w-full">
                                           <a
                                             href={downloadUrl}
                                             target='_blank'
                                             rel='noopener noreferrer'
+                                            className='flex items-center w-full justify-center'
                                           >
                                             <Download className='w-4 h-4 mr-2' />
                                             Download Driver

@@ -30,7 +30,7 @@ export function getDriverInfo(controllerId: string): DriverInfo | null {
   if (!controller) return null;
 
   const os = detectOS();
-  const driverInfo = controller.drivers[os] || controller.drivers.all || null;
+  const driverInfo = os !== 'unknown' ? controller.drivers[os as keyof typeof controller.drivers] || (controller.drivers as any).all || null : (controller.drivers as any).all || null;
 
   return driverInfo;
 }

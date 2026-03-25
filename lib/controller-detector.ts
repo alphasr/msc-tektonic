@@ -146,7 +146,7 @@ export function detectAllControllers(
 
   for (const input of inputs) {
     const result = detectController(
-      input.name,
+      input.name || 'Unknown Device',
       (input as any).manufacturer,
       input.id
     );

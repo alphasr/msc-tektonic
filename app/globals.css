@@ -1,39 +1,38 @@
 @import "tailwindcss";
 
 :root {
-  --background: #09090b; /* Vantablack charcoal */
-  --foreground: #fafafa;
-  --card: #131418; /* Dark glass */
-  --card-foreground: #fafafa;
-  --popover: #131418;
-  --popover-foreground: #fafafa;
+  --background: #050505; /* Deeper black */
+  --foreground: #f8fafc;
+  --card: #0f1115; /* Even darker glass base */
+  --card-foreground: #f8fafc;
+  --popover: #0f1115;
+  --popover-foreground: #f8fafc;
   
-  --primary: #00e5ff; /* Neon Cyan */
+  --primary: #00f0ff; /* Brighter Neon Cyan */
   --primary-foreground: #000000;
   
   --secondary: #ff0055; /* Neon Pink/Rose */
   --secondary-foreground: #ffffff;
   
-  --muted: #27272a;
-  --muted-foreground: #a1a1aa;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
   
-  --accent: #27272a;
-  --accent-foreground: #fafafa;
+  --accent: #1e293b;
+  --accent-foreground: #f8fafc;
   
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
   
-  --border: #27272a;
-  --input: #27272a;
-  --ring: #00e5ff;
-  --radius: 0.5rem;
+  --border: rgba(255, 255, 255, 0.08); /* More subtle borders for glass effect */
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: #00f0ff;
+  --radius: 0.75rem; /* Slightly rounder for modern look */
   
   /* Deck colors */
-  /* Deck colors */
-  --deck-a: #00e5ff;
+  --deck-a: #00f0ff;
   --deck-b: #ff0055;
-  --deck-a-bg: rgba(0, 229, 255, 0.1);
-  --deck-b-bg: rgba(255, 0, 85, 0.1);
+  --deck-a-bg: rgba(0, 240, 255, 0.03);
+  --deck-b-bg: rgba(255, 0, 85, 0.03);
 }
 
 @theme inline {

@@ -17,14 +17,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const request: PlaylistGenerationRequest = {
+    const playlistRequest: PlaylistGenerationRequest = {
       description,
       duration: duration ? parseInt(duration, 10) : undefined,
       startTrackId,
       preferences,
     };
 
-    const playlist = await generatePlaylistFromDescription(request);
+    const playlist = await generatePlaylistFromDescription(playlistRequest);
 
     return NextResponse.json({
       playlist,

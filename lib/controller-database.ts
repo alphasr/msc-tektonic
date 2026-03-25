@@ -17,7 +17,7 @@ export async function loadControllerDatabase(): Promise<
     if (response.ok) {
       const data = await response.json();
       controllerDatabase = data.controllers || [];
-      return controllerDatabase;
+      return controllerDatabase || [];
     }
   } catch (error) {
     console.warn(
