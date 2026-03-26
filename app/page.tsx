@@ -570,6 +570,16 @@ export default function Home() {
     midi.on('deckB_loop4x', () => handleLoop('B', '4x'));
     midi.on('deckB_loop8x', () => handleLoop('B', '8x'));
 
+    // XDJ-RR: tempo fader → pitch rate (sends as jogwheelRateA/B)
+    midi.on('jogwheelRateA', (rate) => handleRateChange('A', rate));
+    midi.on('jogwheelRateB', (rate) => handleRateChange('B', rate));
+
+    // XDJ-RR: hardware SYNC / MASTER buttons
+    midi.on('deckA_sync_hw', () => handleSync('A'));
+    midi.on('deckB_sync_hw', () => handleSync('B'));
+    midi.on('deckA_master_hw', () => handleSetMasterDeck('A'));
+    midi.on('deckB_master_hw', () => handleSetMasterDeck('B'));
+
     console.log('✅ All MIDI handlers registered successfully!');
   };
 

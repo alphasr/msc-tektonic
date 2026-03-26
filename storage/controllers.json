@@ -691,6 +691,96 @@
       }
     },
     {
+      "id": "pioneer-xdj-rr",
+      "name": "Pioneer XDJ-RR",
+      "manufacturer": "Pioneer",
+      "namePatterns": [
+        "XDJ-RR",
+        "xdj-rr",
+        "PIONEER XDJ-RR",
+        "XDJ RR",
+        "Pioneer XDJ-RR"
+      ],
+      "mapping": {
+        "deckA_play":     11,
+        "deckA_pause":    11,
+        "deckA_cue":      12,
+        "deckA_stop":     22,
+        "deckA_volume":   19,
+        "deckA_low":      70,
+        "deckA_mid":      71,
+        "deckA_high":     72,
+        "deckA_gain":     79,
+        "deckA_tempo":    0,
+        "deckA_hotcue1":  16,
+        "deckA_hotcue2":  17,
+        "deckA_hotcue3":  18,
+        "deckA_hotcue4":  19,
+        "deckA_loopIn":   36,
+        "deckA_loopOut":  37,
+        "deckA_loopRel":  38,
+        "deckA_sync":     88,
+        "deckA_master":   89,
+
+        "deckB_play":     11,
+        "deckB_pause":    11,
+        "deckB_cue":      12,
+        "deckB_stop":     22,
+        "deckB_volume":   19,
+        "deckB_low":      70,
+        "deckB_mid":      71,
+        "deckB_high":     72,
+        "deckB_gain":     79,
+        "deckB_tempo":    0,
+        "deckB_hotcue1":  16,
+        "deckB_hotcue2":  17,
+        "deckB_hotcue3":  18,
+        "deckB_hotcue4":  19,
+        "deckB_loopIn":   36,
+        "deckB_loopOut":  37,
+        "deckB_loopRel":  38,
+        "deckB_sync":     88,
+        "deckB_master":   89,
+
+        "crossfader":     31,
+        "masterVolume":   17
+      },
+      "channelMap": {
+        "deckA": 0,
+        "deckB": 1
+      },
+      "notes": "XDJ-RR uses MIDI channel 0 for Deck 1 and channel 1 for Deck 2. Play/Pause is a single toggle button (Note 11). Tempo slider sends CC 0 on respective channel. Jog wheels send Pitch Bend messages. Requires Pioneer ASIO driver on Windows; class-compliant on macOS via USB.",
+      "drivers": {
+        "windows": {
+          "required": true,
+          "classCompliant": false,
+          "downloadUrl": "https://www.pioneerdj.com/en/support/software/xdj-rr/",
+          "instructions": [
+            "Download and install the official Pioneer DJ ASIO driver for XDJ-RR from pioneerdj.com.",
+            "In Windows, open Device Manager and confirm the device appears as 'Pioneer XDJ-RR'.",
+            "After install, restart your browser before using Web MIDI."
+          ]
+        },
+        "macos": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "The XDJ-RR is class-compliant on macOS — no drivers needed.",
+            "Connect via USB-B to USB-A cable. It will appear automatically in the MIDI device list."
+          ]
+        },
+        "linux": {
+          "required": false,
+          "classCompliant": true,
+          "instructions": [
+            "Ensure ALSA and ALSA MIDI utilities are installed: sudo apt-get install alsa-utils",
+            "Check device appears: aconnect -i",
+            "Use 'aplaymidi' or Jack to route MIDI if needed."
+          ]
+        }
+      }
+    },
+    {
       "id": "generic-fallback",
       "name": "Generic MIDI Controller",
       "manufacturer": "Unknown",

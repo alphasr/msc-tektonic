@@ -352,8 +352,22 @@ export class MIDIController {
 
     const noteKey = `${channel}-${note}`;
 
-    // Look through active mapping for matching note
-    const mappedControl = Object.entries(this.mapping).find(([key, value]) => value === note);
+    // For channel-aware controllers (like XDJ-RR), try channel-prefixed lookup first
+    // XDJ-RR: channel 0 = Deck 1, channel 1 = Deck 2
+    const channelPrefix = channel === 0 ? 'deckA' : channel === 1 ? 'deckB' : null;
+    let mappedControl: [string, number] | undefined;
+
+    if (channelPrefix) {
+      // Try to find a channel-specific match first (e.g. deckA_play on note 11, ch0)
+      mappedControl = Object.entries(this.mapping).find(([key, value]) =>
+        value === note && key.startsWith(channelPrefix)
+      ) as [string, number] | undefined;
+    }
+
+    // Fallback to channel-agnostic lookup
+    if (!mappedControl) {
+      mappedControl = Object.entries(this.mapping).find(([key, value]) => value === note) as [string, number] | undefined;
+    }
 
     if (mappedControl) {
       const [controlName] = mappedControl;
@@ -371,21 +385,55 @@ export class MIDIController {
     const normalizedValue = value / 127; // 0-1
     const ccKey = `${channel}-${cc}`;
 
-    // Look through active mapping for matching CC
-    const mappedControl = Object.entries(this.mapping).find(([key, val]) => val === cc);
+    // Channel-aware lookup (XDJ-RR: ch0=DeckA, ch1=DeckB)
+    const channelPrefix = channel === 0 ? 'deckA' : channel === 1 ? 'deckB' : null;
+    let mappedControl: [string, number] | undefined;
+
+    if (channelPrefix) {
+      mappedControl = Object.entries(this.mapping).find(([key, val]) =>
+        val === cc && key.startsWith(channelPrefix)
+      ) as [string, number] | undefined;
+    }
+
+    // Fallback to generic lookup
+    if (!mappedControl) {
+      mappedControl = Object.entries(this.mapping).find(([key, val]) => val === cc) as [string, number] | undefined;
+    }
 
     if (mappedControl) {
       const [controlName] = mappedControl;
-      
-      // Determine what to pass based on control type
-      if (controlName.includes('volume') || controlName.includes('masterVolume') || controlName.includes('gain')) {
+
+      // XDJ-RR tempo fader: CC 0 → pitch rate (0=+16%, 64=0%, 127=-16% — Pioneer inverts tempo)
+      if (controlName.includes('tempo')) {
+        // Pioneer tempo fader is inverted: 0 = max speed, 127 = min speed
+        // Center (64) = 0%, full range ±16% (0.84–1.16)
+        const centeredNorm = (64 - value) / 64; // +1 to -1
+        const rate = 1.0 + centeredNorm * 0.16;
+        const deckLetter = controlName.startsWith('deckA') ? 'A' : 'B';
+        this.triggerCallback(`jogwheelRate${deckLetter}`, rate);
+      }
+      // Sync / Master buttons from hardware
+      else if (controlName.includes('_sync')) {
+        const deckLetter = controlName.startsWith('deckA') ? 'A' : 'B';
+        this.triggerCallback(`deck${deckLetter}_sync_hw`, 1);
+      }
+      else if (controlName.includes('_master')) {
+        const deckLetter = controlName.startsWith('deckA') ? 'A' : 'B';
+        this.triggerCallback(`deck${deckLetter}_master_hw`, 1);
+      }
+      // Volume / Gain faders
+      else if (controlName.includes('volume') || controlName.includes('masterVolume') || controlName.includes('gain')) {
         this.triggerCallback(controlName, normalizedValue * 100);
-      } else if (controlName.includes('low') || controlName.includes('mid') || controlName.includes('high')) {
+      }
+      // EQ knobs
+      else if (controlName.includes('low') || controlName.includes('mid') || controlName.includes('high')) {
         this.triggerCallback(controlName, (normalizedValue - 0.5) * 24);
-      } else if (controlName === 'crossfader') {
+      }
+      // Crossfader
+      else if (controlName === 'crossfader') {
         this.triggerCallback(controlName, (normalizedValue - 0.5) * 200);
-      } else {
-        // generic
+      }
+      else {
         this.triggerCallback(controlName, normalizedValue);
       }
     } else {
