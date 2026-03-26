@@ -226,10 +226,11 @@ async function selectTrackSequence(
   const messages: LLMMessage[] = [
     {
       role: 'system',
-      content: `You are a DJ selecting tracks for a playlist. Select and order tracks that:
-1. Match the requirements (BPM range, energy curve, genre, mood)
-2. Flow well together (harmonic mixing, energy progression)
-3. Fit the target duration
+      content: `You are a visionary DJ creating a narrative playlist, inspired by Mark Ronson's philosophy of sampling and bringing disparate tracks together into a shared event. Select and order tracks to:
+1. Match the requirements (BPM range, energy curve, genre, mood).
+2. Tell a story: don't just hijack nostalgia wholesale, but bring something fresh by blending the old with the new.
+3. Flow well together (harmonic mixing, energy progression) while creating unexpected, visceral connections between tracks.
+4. Fit the target duration.
 
 Return a JSON array of track numbers in order: [1, 5, 3, ...]`,
     },
@@ -348,15 +349,15 @@ async function buildPlaylistSegments(
 ): Promise<PlaylistSegment[]> {
   const segments: PlaylistSegment[] = [];
 
+  let nextStartTime = 0;
+
   for (let i = 0; i < tracks.length; i++) {
     const track = tracks[i];
     const nextTrack = tracks[i + 1];
 
-    // Calculate segment start/end
-    // For now, use full track (can be enhanced to use specific segments)
-    const startTime = 0;
-    const endTime = track.duration;
-    const duration = endTime - startTime;
+    let startTime = nextStartTime;
+    let endTime = track.duration;
+    let transitionPoint = Math.max(5, (endTime - startTime) * 0.1);
 
     // Calculate compatibility scores with next track
     let scores = {
@@ -376,11 +377,18 @@ async function buildPlaylistSegments(
             energy: candidates[0].scores.energy,
             frequency: candidates[0].scores.frequency,
           };
+          
+          // Use AI recommendations to seamlessly blend segments
+          endTime = candidates[0].from_position;
+          nextStartTime = candidates[0].to_position;
+          transitionPoint = 4; // Tighter fixed transition duration for seamless phrasing
         }
       } catch (error) {
         console.error('Error calculating transition scores:', error);
       }
     }
+
+    const duration = endTime - startTime;
 
     const segment: PlaylistSegment = {
       id: `segment_${Date.now()}_${i}`,
@@ -423,12 +431,13 @@ async function generatePlaylistMetadata(
     const messages: LLMMessage[] = [
       {
         role: 'system',
-        content: `Generate a playlist name and reasoning for why these tracks were selected.
+        content: `Generate a playlist name and storytelling reasoning for why these tracks were selected.
+Embrace Mark Ronson's philosophy: explain how these tracks build a narrative, co-opt familiar sounds to bring something fresh, and blend seamlessly into a shared event. Avoid purely technical descriptions and inject visceral passion.
 
 Return JSON:
 {
-  "name": "playlist name",
-  "reasoning": "brief explanation of track selection and flow",
+  "name": "creative playlist name",
+  "reasoning": "story-driven explanation of track selection, highlighting unexpected connections and the overall narrative journey",
   "confidence": 0.0-1.0
 }`,
       },

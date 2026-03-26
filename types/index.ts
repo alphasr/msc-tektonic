@@ -22,6 +22,7 @@ export interface DeckState {
     mid: number;
     high: number;
   };
+  rate: number;
 }
 
 export interface MixerState {
@@ -29,6 +30,7 @@ export interface MixerState {
   deckB: DeckState;
   crossfader: number; // -100 to 100
   masterVolume: number;
+  masterDeck: 'A' | 'B' | null;
 }
 
 export interface PhraseSegment {

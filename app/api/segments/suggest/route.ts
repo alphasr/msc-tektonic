@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     const strictKey = searchParams.get('strictKey') === 'true';
     const trackIdStr = trackId || undefined;
     const excludeTrackId = searchParams.get('excludeTrackId') || trackIdStr; // Exclude current track by default
+    const targetTrackId = searchParams.get('targetTrackId'); // Explicit target track
 
     if (!trackId) {
       return NextResponse.json(
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
       trackId,
       position,
       scope,
-      limit * 2,
+      targetTrackId ? 500 : limit * 2, // get a lot if filtering by target
       excludeTrackId
     );
 
@@ -51,6 +52,9 @@ export async function GET(request: NextRequest) {
     const suggestions: SegmentSuggestion[] = [];
 
     for (const segment of similarSegments) {
+      // If a specific target track was requested, filter out everything else
+      if (targetTrackId && segment.track_id !== targetTrackId) continue;
+
       if (segment.score < minScore) continue;
 
       const trackManifest = await getManifest(segment.track_id);

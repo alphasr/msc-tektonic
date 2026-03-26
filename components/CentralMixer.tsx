@@ -16,6 +16,7 @@ interface CentralMixerProps {
   onCrossfaderChange: (value: number) => void
   onDeckAEQChange: (band: "low" | "mid" | "high", value: number) => void
   onDeckBEQChange: (band: "low" | "mid" | "high", value: number) => void
+  onAutoTransition: () => void
 }
 
 function LevelMeter({ level, mounted }: { level: number; mounted: boolean }) {
@@ -133,6 +134,7 @@ export default function CentralMixer({
   onCrossfaderChange,
   onDeckAEQChange,
   onDeckBEQChange,
+  onAutoTransition,
 }: CentralMixerProps) {
   const [levelMeters, setLevelMeters] = useState({
     deckA: 0,
@@ -230,8 +232,16 @@ export default function CentralMixer({
           </div>
           <span className="text-[8px] font-bold text-deck-b tracking-wider">B</span>
         </div>
-        <div className="text-[8px] text-center mt-0.5 text-muted-foreground/50">
-          {crossfader < -5 ? `← A ${formatPercent(Math.abs(crossfader))}` : crossfader > 5 ? `B ${formatPercent(crossfader)} →` : "Center"}
+        <div className="flex justify-between items-center text-[8px] mt-1 pr-1">
+          <div className="text-muted-foreground/50">
+            {crossfader < -5 ? `← A ${formatPercent(Math.abs(crossfader))}` : crossfader > 5 ? `B ${formatPercent(crossfader)} →` : "Center"}
+          </div>
+          <button
+            onClick={onAutoTransition}
+            className="font-bold tracking-wider px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
+          >
+            AUTO MIX
+          </button>
         </div>
       </div>
     </div>

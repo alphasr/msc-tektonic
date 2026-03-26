@@ -38,6 +38,7 @@ export default function Home() {
       currentTime: 0,
       volume: 50,
       eq: { low: 0, mid: 0, high: 0 },
+      rate: 1.0,
     },
     deckB: {
       track: null,
@@ -45,9 +46,11 @@ export default function Home() {
       currentTime: 0,
       volume: 50,
       eq: { low: 0, mid: 0, high: 0 },
+      rate: 1.0,
     },
     crossfader: 0,
     masterVolume: 50,
+    masterDeck: null,
   });
 
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -207,6 +210,152 @@ export default function Home() {
         },
       }));
     }
+  };
+
+  const handleSetMasterDeck = (deck: 'A' | 'B') => {
+    setMixerState((prev) => ({
+      ...prev,
+      masterDeck: prev.masterDeck === deck ? null : deck,
+    }));
+  };
+
+  const handleSync = (deck: 'A' | 'B') => {
+    setMixerState((prev) => {
+      let currentMaster = prev.masterDeck;
+      // Auto-assign to opposite deck if no master is set (Virtual DJ behavior)
+      if (!currentMaster) {
+        currentMaster = deck === 'A' ? 'B' : 'A';
+      }
+      if (currentMaster === deck) return prev;
+
+      const sourceDeckState = deck === 'A' ? prev.deckA : prev.deckB;
+      const targetDeckState = currentMaster === 'A' ? prev.deckA : prev.deckB;
+
+      if (!sourceDeckState.track || !targetDeckState.track) return prev;
+
+      const targetEffectiveBpm = targetDeckState.track.bpm * (targetDeckState.rate ?? 1.0);
+      const sourceBpm = sourceDeckState.track.bpm;
+      if (!targetEffectiveBpm || !sourceBpm) return prev;
+
+      const newRate = targetEffectiveBpm / sourceBpm;
+
+      const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
+      if (deckRef) {
+        deckRef.setRate(newRate);
+      }
+
+      const deckKey = deck === 'A' ? 'deckA' : 'deckB';
+      return {
+        ...prev,
+        [deckKey]: { ...prev[deckKey], rate: newRate },
+      };
+    });
+  };
+
+  const handleRateChange = (deck: 'A' | 'B', newRate: number) => {
+    setMixerState((prev) => {
+      const deckKey = deck === 'A' ? 'deckA' : 'deckB';
+      const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
+      if (deckRef) {
+        deckRef.setRate(newRate);
+      }
+      return {
+        ...prev,
+        [deckKey]: { ...prev[deckKey], rate: newRate },
+      };
+    });
+  };
+
+  const handleAutoTransition = async () => {
+    const activeDeck = mixerState.crossfader <= 0 ? 'A' : 'B';
+    const targetDeck = activeDeck === 'A' ? 'B' : 'A';
+    const targetDeckKey = targetDeck === 'A' ? 'deckA' : 'deckB';
+    const activeDeckKey = activeDeck === 'A' ? 'deckA' : 'deckB';
+    const activeTrack = mixerState[activeDeckKey].track;
+    const targetTrack = mixerState[targetDeckKey].track;
+
+    if (!targetTrack || !activeTrack) {
+      console.warn(`Cannot transition: Both decks must have a loaded track`);
+      return;
+    }
+
+    // Try to find the AI optimal starting point using cosine similarity (15s phrasing)
+    try {
+      const activeCurrentTime = activeDeck === 'A' && deckARef.current ? deckARef.current.getCurrentTime() :
+                                activeDeck === 'B' && deckBRef.current ? deckBRef.current.getCurrentTime() : 0;
+      
+      const searchParams = new URLSearchParams({
+        trackId: activeTrack.id,
+        position: activeCurrentTime.toString(),
+        targetTrackId: targetTrack.id,
+        limit: '1',
+      });
+      const res = await fetch(`/api/segments/suggest?${searchParams}`);
+      if (res.ok) {
+        const data = await res.json();
+        const bestMatch = data.suggestions[0];
+        if (bestMatch && bestMatch.trackId === targetTrack.id) {
+           console.log(`Auto Mix: Found AI optimal start point at ${bestMatch.position}s (Score: ${bestMatch.score})`);
+           handleSeek(targetDeck, bestMatch.position);
+           
+           // If we're setting an AI transition, also sync BPM!
+           handleSync(targetDeck);
+        }
+      }
+    } catch (e) {
+       console.error("AI Transition fallback: could not fetch suggestion", e);
+    }
+
+    const targetDeckRef = targetDeck === 'A' ? deckARef.current : deckBRef.current;
+    if (targetDeckRef && !mixerState[targetDeckKey].isPlaying) {
+      lastUserActionRef.current = Date.now();
+      targetDeckRef.play();
+      setMixerState((prev) => ({ 
+        ...prev, 
+        [targetDeckKey]: { ...prev[targetDeckKey], isPlaying: true } 
+      }));
+    }
+
+    const duration = 4000;
+    const steps = 40;
+    const intervalDelay = duration / steps;
+    const startFader = mixerState.crossfader;
+    const targetFader = activeDeck === 'A' ? 100 : -100;
+    const faderStep = (targetFader - startFader) / steps;
+
+    let currentStep = 0;
+    const transitionInterval = setInterval(() => {
+      currentStep++;
+      if (currentStep >= steps) {
+        clearInterval(transitionInterval);
+        
+        const activeRef = activeDeck === 'A' ? deckARef.current : deckBRef.current;
+        if (activeRef) {
+           lastUserActionRef.current = Date.now();
+           activeRef.pause();
+        }
+
+        setMixerState((prev) => ({
+          ...prev,
+          crossfader: targetFader,
+          [activeDeckKey]: { ...prev[activeDeckKey], isPlaying: false }
+        }));
+        if (audioManagerRef.current) {
+          audioManagerRef.current.setCrossfader(targetFader);
+        }
+      } else {
+        // Use an equal-power (cosine) crossfade curve for better volume control
+        // Instead of linear `(faderStep * currentStep)`, we could map start to target
+        const progress = currentStep / steps; // 0 to 1
+        const cosineBlend = 0.5 - 0.5 * Math.cos(progress * Math.PI); // Smooth ease-in-out
+        const newValue = startFader + ((targetFader - startFader) * cosineBlend);
+
+        setMixerState((prev) => ({ ...prev, crossfader: newValue }));
+        if (audioManagerRef.current) {
+          audioManagerRef.current.setCrossfader(newValue);
+        }
+      }
+    }, intervalDelay);
   };
 
   // Setup MIDI event handlers (defined after handler functions)
@@ -504,10 +653,6 @@ export default function Home() {
     }
 
     progressInterval.current = setInterval(() => {
-      // Don't override isPlaying state within 200ms of a user action
-      // (the audio engine may not have processed the command yet)
-      const isInDebounceWindow = Date.now() - lastUserActionRef.current < 200;
-
       setMixerState((prev) => {
         let deckAUpdates: Partial<DeckState> | null = null;
         let deckBUpdates: Partial<DeckState> | null = null;
@@ -515,16 +660,15 @@ export default function Home() {
         if (deckARef.current) {
           const actualCurrentTime = deckARef.current.getCurrentTime();
 
-          // Only sync isPlaying from audio engine if NOT in debounce window
-          if (!isInDebounceWindow) {
-            const actualIsPlaying = deckARef.current.isPlaying();
-            if (actualIsPlaying !== prev.deckA.isPlaying) {
-              deckAUpdates = { ...(deckAUpdates || {}), isPlaying: actualIsPlaying };
-            }
-          }
-
           if (Math.abs(actualCurrentTime - prev.deckA.currentTime) > 0.05) {
             deckAUpdates = { ...(deckAUpdates || {}), currentTime: actualCurrentTime };
+          }
+          // Prevent race condition: wait 300ms after user action before enforcing audio engine's play state
+          if (Date.now() - lastUserActionRef.current > 300) {
+            const actualPlaying = deckARef.current.isPlaying();
+            if (actualPlaying !== prev.deckA.isPlaying) {
+              deckAUpdates = { ...(deckAUpdates || {}), isPlaying: actualPlaying };
+            }
           }
           // Auto-stop at end of track
           if (prev.deckA.track && actualCurrentTime >= prev.deckA.track.duration - 0.1 && prev.deckA.isPlaying) {
@@ -535,15 +679,14 @@ export default function Home() {
         if (deckBRef.current) {
           const actualCurrentTime = deckBRef.current.getCurrentTime();
 
-          if (!isInDebounceWindow) {
-            const actualIsPlaying = deckBRef.current.isPlaying();
-            if (actualIsPlaying !== prev.deckB.isPlaying) {
-              deckBUpdates = { ...(deckBUpdates || {}), isPlaying: actualIsPlaying };
-            }
-          }
-
           if (Math.abs(actualCurrentTime - prev.deckB.currentTime) > 0.05) {
             deckBUpdates = { ...(deckBUpdates || {}), currentTime: actualCurrentTime };
+          }
+          if (Date.now() - lastUserActionRef.current > 300) {
+            const actualPlaying = deckBRef.current.isPlaying();
+            if (actualPlaying !== prev.deckB.isPlaying) {
+              deckBUpdates = { ...(deckBUpdates || {}), isPlaying: actualPlaying };
+            }
           }
           if (prev.deckB.track && actualCurrentTime >= prev.deckB.track.duration - 0.1 && prev.deckB.isPlaying) {
             deckBUpdates = { ...(deckBUpdates || {}), isPlaying: false, currentTime: 0 };
@@ -581,6 +724,9 @@ export default function Home() {
 
       // Clear previous event handlers to prevent leaks
       deckRef.off('end');
+      deckRef.off('play');
+      deckRef.off('pause');
+      deckRef.off('stop');
 
       // Update state immediately to show loading
       setMixerState((prev) => ({
@@ -590,13 +736,32 @@ export default function Home() {
           track,
           currentTime: 0,
           isPlaying: false,
+          rate: 1.0, // Reset rate on new track
         },
       }));
 
       const audioUrl = `/api/audio/${track.id}`;
       await deckRef.load(audioUrl);
 
-      // Set up event handler for track end
+      // Set up event handlers for track lifecycle
+      deckRef.on('play', () => {
+        setMixerState((prev) => ({
+          ...prev,
+          [deckKey]: { ...prev[deckKey], isPlaying: true }
+        }));
+      });
+      deckRef.on('pause', () => {
+        setMixerState((prev) => ({
+          ...prev,
+          [deckKey]: { ...prev[deckKey], isPlaying: false }
+        }));
+      });
+      deckRef.on('stop', () => {
+        setMixerState((prev) => ({
+          ...prev,
+          [deckKey]: { ...prev[deckKey], isPlaying: false, currentTime: 0 }
+        }));
+      });
       deckRef.on('end', () => {
         setMixerState((prev) => ({
           ...prev,
@@ -672,6 +837,7 @@ export default function Home() {
             currentTime: 0,
             volume: prevDeck.volume,
             eq: { ...prevDeck.eq },
+            rate: 1.0,
           },
         };
       });
@@ -1032,6 +1198,7 @@ export default function Home() {
                 <Deck
                   deck={mixerState.deckA}
                   deckName='A'
+                  isMaster={mixerState.masterDeck === 'A'}
                   onPlay={() => handlePlay('A')}
                   onPause={() => handlePause('A')}
                   onStop={() => handleStop('A')}
@@ -1039,6 +1206,9 @@ export default function Home() {
                   onLoadTrack={() => {}}
                   onEject={() => handleEject('A')}
                   onSeek={(time) => handleSeek('A', time)}
+                  onSetMaster={() => handleSetMasterDeck('A')}
+                  onSync={() => handleSync('A')}
+                  onRateChange={(rate) => handleRateChange('A', rate)}
                 />
               </Panel>
               <PanelResizeHandle className='w-1.5 bg-border hover:bg-primary/20 transition-colors cursor-col-resize' />
@@ -1089,6 +1259,7 @@ export default function Home() {
                       },
                     }))
                   }
+                  onAutoTransition={handleAutoTransition}
                 />
               </Panel>
               <PanelResizeHandle className='w-1.5 bg-border hover:bg-primary/20 transition-colors cursor-col-resize' />
@@ -1101,6 +1272,7 @@ export default function Home() {
                 <Deck
                   deck={mixerState.deckB}
                   deckName='B'
+                  isMaster={mixerState.masterDeck === 'B'}
                   onPlay={() => handlePlay('B')}
                   onPause={() => handlePause('B')}
                   onStop={() => handleStop('B')}
@@ -1108,6 +1280,9 @@ export default function Home() {
                   onLoadTrack={() => {}}
                   onEject={() => handleEject('B')}
                   onSeek={(time) => handleSeek('B', time)}
+                  onSetMaster={() => handleSetMasterDeck('B')}
+                  onSync={() => handleSync('B')}
+                  onRateChange={(rate) => handleRateChange('B', rate)}
                 />
               </Panel>
 

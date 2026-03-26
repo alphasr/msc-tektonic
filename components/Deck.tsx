@@ -1,14 +1,16 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Play, Pause, Square, RotateCcw, Repeat, Zap, SkipForward } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DeckState } from "@/types"
 import { cn, getCamelotColor } from "@/lib/utils"
+import { getAudioManager } from "@/lib/audio-manager"
 
 interface DeckProps {
   deck: DeckState
   deckName: "A" | "B"
+  isMaster: boolean
   onPlay: () => void
   onPause: () => void
   onStop: () => void
@@ -16,11 +18,15 @@ interface DeckProps {
   onLoadTrack: () => void
   onEject: () => void
   onSeek: (time: number) => void
+  onSetMaster: () => void
+  onSync: () => void
+  onRateChange?: (rate: number) => void
 }
 
 export default function Deck({
   deck,
   deckName,
+  isMaster,
   onPlay,
   onPause,
   onStop,
@@ -28,8 +34,12 @@ export default function Deck({
   onLoadTrack,
   onEject,
   onSeek,
+  onSetMaster,
+  onSync,
+  onRateChange,
 }: DeckProps) {
   const waveformRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDeckA = deckName === "A"
 
   const formatTime = (seconds: number) => {
@@ -48,17 +58,65 @@ export default function Deck({
     if (!deck.track || !deck.track.waveform || deck.track.waveform.length === 0) {
       return Array(80).fill(0.3)
     }
-    return deck.track.waveform
+    const raw = deck.track.waveform;
+    const max = Math.max(...raw, 0.01);
+    return raw.map(h => h / max); // Normalize so both decks use the full RGB color range
   }
 
   const waveform = generateWaveform()
   const progress = deck.track ? (deck.currentTime / deck.track.duration) * 100 : 0
 
+  // Live Spectrum Visualizer Animation
+  useEffect(() => {
+    if (!deck.isPlaying || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const audioManager = getAudioManager();
+    let animationId: number;
+
+    const draw = () => {
+      animationId = requestAnimationFrame(draw);
+      
+      const freqData = audioManager.getFrequencyData(deckName);
+      if (freqData) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 32 bins based on fftSize 64
+        const numBars = freqData.length;
+        const barWidth = (canvas.width / numBars);
+        
+        let x = 0;
+        for (let i = 0; i < numBars; i++) {
+          const barHeight = (freqData[i] / 255) * canvas.height;
+          
+          // Serato/Pioneer inspired RGB color mapping across frequencies bounds
+          const r = barHeight > 10 ? 255 : 0;
+          const g = i < numBars / 2 ? 0 : 255;
+          const b = 255 - (i * 5);
+          
+          ctx.fillStyle = `rgb(${r},${Math.max(0, g)},${Math.max(0, b)})`;
+          ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+          
+          x += barWidth;
+        }
+      }
+    };
+
+    draw();
+
+    return () => cancelAnimationFrame(animationId);
+  }, [deck.isPlaying, deckName]);
+
   const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!deck.track || !waveformRef.current) return
     const rect = waveformRef.current.getBoundingClientRect()
     const x = e.clientX - rect.left
-    const percentage = x / rect.width
+    const innerWidth = rect.width / deck.rate
+    let percentage = x / innerWidth
+    if (percentage > 1) percentage = 1
     const newTime = percentage * deck.track.duration
     onSeek(newTime)
   }
@@ -110,9 +168,25 @@ export default function Deck({
               <h3 className="text-[11px] font-semibold truncate leading-tight">{deck.track.title}</h3>
               <div className="text-[10px] text-muted-foreground truncate">{deck.track.artist}</div>
               <div className="flex gap-1.5 mt-1 items-center flex-wrap">
-                <span className="text-[9px] font-mono bg-background/60 px-1.5 py-0.5 rounded border border-white/5">
-                  {deck.track.bpm} <span className="text-[7px] text-muted-foreground/60">BPM</span>
+                <span className={cn(
+                  "text-[10px] font-mono px-1.5 py-0.5 rounded border flex items-center gap-1 transition-colors font-bold",
+                  deck.rate !== 1.0 ? "bg-amber-500/10 border-amber-500/30 text-amber-400" : "bg-background/60 border-white/10"
+                )}>
+                  {(deck.track.bpm * deck.rate).toFixed(2)} <span className="text-[7px] font-normal opacity-60">BPM</span>
                 </span>
+                
+                <button
+                  onClick={onSetMaster}
+                  className={cn(
+                    "text-[8px] font-bold px-1.5 py-0.5 rounded transition-colors border",
+                    isMaster 
+                      ? (isDeckA ? "bg-deck-a/20 text-deck-a border-deck-a/50 shadow-[0_0_8px_-2px_var(--deck-a)]" : "bg-deck-b/20 text-deck-b border-deck-b/50 shadow-[0_0_8px_-2px_var(--deck-b)]") 
+                      : "bg-background/40 border-white/10 text-muted-foreground hover:bg-white/10"
+                  )}
+                >
+                  MASTER
+                </button>
+
                 <span
                   className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white shadow-sm"
                   style={{ backgroundColor: getCamelotColor(deck.track.key) }}
@@ -132,26 +206,57 @@ export default function Deck({
               <span className="opacity-60">{getRemainingTime()}</span>
             </div>
 
+            {/* Live Spectrum Visualizer */}
+            <div className="h-6 w-full mb-1 flex-shrink-0 opacity-80 border-b border-white/[0.03]">
+              <canvas ref={canvasRef} width={200} height={24} className="w-full h-full" />
+            </div>
+
             {/* Waveform */}
             <div className="mb-1 flex-shrink-0">
               <div
                 ref={waveformRef}
-                className="h-14 w-full bg-background/40 rounded-lg cursor-pointer relative overflow-hidden border border-white/[0.03] shadow-inner"
+                className="h-20 w-full bg-background/40 rounded-lg cursor-pointer relative overflow-hidden border border-white/[0.03] shadow-inner"
                 onClick={handleWaveformClick}
               >
-                <div className="absolute inset-0 flex items-end px-0.5">
-                  {waveform.map((height, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        "flex-1 mx-[0.5px] rounded-t-sm transition-colors duration-150",
-                        i < (progress / 100) * waveform.length
-                          ? isDeckA ? "bg-deck-a/80" : "bg-deck-b/80"
-                          : "bg-white/10"
-                      )}
-                      style={{ height: `${Math.max(height * 90, 4)}%` }}
-                    />
-                  ))}
+                <div 
+                  className="absolute inset-0 flex items-center px-0.5 gap-[1px] transition-transform duration-200"
+                  style={{ transform: `scaleX(${1 / deck.rate})`, transformOrigin: 'left' }}
+                >
+                  {waveform.map((height, i) => {
+                    const isPlayed = i < (progress / 100) * waveform.length;
+                    
+                    // Serato/Pioneer 3-Band RGB Color Simulation based on amplitude mapping
+                    let r = 0, g = 0, b = 0;
+                    if (height > 0.65) {
+                      // Bass kicks -> Bright Red/Orange
+                      r = 255; g = Math.floor(255 * (1 - height)); b = 50;
+                    } else if (height > 0.35) {
+                      // Mids -> Green/Amber
+                      r = Math.floor(255 * height); g = 255; b = 0;
+                    } else {
+                      // Highs -> Blue/Cyan
+                      r = 0; g = Math.floor(255 * height * 2); b = 255;
+                    }
+                    
+                    const outerColor = `rgba(${r}, ${g}, ${b}, ${isPlayed ? 0.3 : 0.1})`;
+                    const innerColor = `rgba(${r}, ${g}, ${b}, ${isPlayed ? 0.9 : 0.3})`;
+                    const innerShadow = isPlayed && height > 0.65 ? `0 0 6px rgba(${r},${g},${b},0.6)` : 'none';
+
+                    return (
+                      <div key={i} className="flex-1 h-full flex items-center justify-center relative">
+                        {/* Outer/Full Frequency Layer */}
+                        <div
+                          className="absolute w-full rounded-sm transition-colors duration-150"
+                          style={{ height: `${Math.max(height * 95, 2)}%`, backgroundColor: outerColor }}
+                        />
+                        {/* Inner/Bass Core Layer */}
+                        <div
+                          className="absolute w-full rounded-sm transition-colors duration-150"
+                          style={{ height: `${Math.max(Math.pow(height, 1.5) * 75, 2)}%`, backgroundColor: innerColor, boxShadow: innerShadow }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
                 {/* Playhead */}
                 <div
@@ -159,7 +264,7 @@ export default function Deck({
                     "absolute top-0 bottom-0 w-[2px] z-10 transition-[left] duration-75",
                     isDeckA ? "bg-deck-a shadow-[0_0_6px_var(--deck-a)]" : "bg-deck-b shadow-[0_0_6px_var(--deck-b)]"
                   )}
-                  style={{ left: `${progress}%` }}
+                  style={{ left: `${progress / deck.rate}%` }}
                 />
               </div>
               {/* Section markers */}
@@ -231,6 +336,17 @@ export default function Deck({
             >
               <Square className="w-3 h-3" />
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onSync}
+              className={cn(
+                "h-9 px-2 rounded-lg border-white/5 hover:bg-muted ml-0.5 transition-colors",
+                deck.rate !== 1.0 ? "bg-amber-500/20 text-amber-500 border-amber-500/30" : "bg-card/60 text-muted-foreground"
+              )}
+            >
+              <span className="text-[9px] font-bold">SYNC</span>
+            </Button>
           </div>
 
           {/* Secondary Controls */}
@@ -260,6 +376,23 @@ export default function Deck({
               <Zap className="w-2.5 h-2.5 mr-0.5" />
               Cues
             </Button>
+          </div>
+
+          {/* Manual Pitch Range Slider */}
+          <div className="flex items-center gap-2 pt-1.5">
+            <Button variant="ghost" className="h-4 w-4 text-[8px] p-0 text-muted-foreground hover:text-white" onClick={() => onRateChange && onRateChange(1.0)}>R</Button>
+            <input
+              type="range"
+              min="0.84"
+              max="1.16"
+              step="0.001"
+              value={deck.rate}
+              onChange={(e) => onRateChange && onRateChange(parseFloat(e.target.value))}
+              className="flex-1 h-1.5 bg-white/10 rounded-full appearance-none cursor-ew-resize [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-sm"
+            />
+            <span className={cn("text-[9px] w-8 text-right font-mono", deck.rate !== 1.0 ? "text-amber-500" : "text-muted-foreground")}>
+              {deck.rate > 1 ? '+' : ''}{((deck.rate - 1) * 100).toFixed(1)}%
+            </span>
           </div>
         </div>
       </div>

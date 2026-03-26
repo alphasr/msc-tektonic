@@ -69,6 +69,11 @@ export class AudioManager {
     return id === 'A' ? this.deckA : this.deckB;
   }
 
+  getFrequencyData(id: 'A' | 'B'): Uint8Array | null {
+    const deck = this.getDeck(id);
+    return deck ? deck.getFrequencyData() : null;
+  }
+
   private updateCrossfader() {
     if (this.deckA && this.deckB) {
       if (this.crossfaderValue < 0) {
@@ -126,6 +131,8 @@ class DeckAudio {
   private volumeGain: GainNode;
   private crossfaderGain: GainNode;
   private deckGain: GainNode;
+  private analyser: AnalyserNode;
+  private freqData: Uint8Array;
   private deckId: 'A' | 'B';
 
   constructor(
@@ -154,15 +161,21 @@ class DeckAudio {
     this.highFilter.frequency.value = 5000;
     this.highFilter.gain.value = 0;
 
-    // Create gain nodes
+    // Create gain and analyser nodes
     this.volumeGain = audioContext.createGain();
     this.crossfaderGain = audioContext.createGain();
     this.deckGain = audioContext.createGain();
+    
+    this.analyser = audioContext.createAnalyser();
+    this.analyser.fftSize = 64; // 32 frequency bins
+    this.analyser.smoothingTimeConstant = 0.8;
+    this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
 
-    // Connect: filters -> volume -> crossfader -> deck -> master
+    // Connect: filters -> analyser -> volume -> crossfader -> deck -> master
     this.lowFilter.connect(this.midFilter);
     this.midFilter.connect(this.highFilter);
-    this.highFilter.connect(this.volumeGain);
+    this.highFilter.connect(this.analyser);
+    this.analyser.connect(this.volumeGain);
     this.volumeGain.connect(this.crossfaderGain);
     this.crossfaderGain.connect(this.deckGain);
     this.deckGain.connect(masterGain);
@@ -238,6 +251,9 @@ class DeckAudio {
   }
 
   play() {
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(console.error);
+    }
     if (this.howl) {
       this.howl.play();
     }
@@ -279,6 +295,13 @@ class DeckAudio {
     return this.howl ? this.howl.playing() : false;
   }
 
+  getFrequencyData(): Uint8Array {
+    if (this.analyser) {
+      this.analyser.getByteFrequencyData(this.freqData as any);
+    }
+    return this.freqData;
+  }
+
   setVolume(volume: number) {
     // Volume: 0-100 -> 0-1
     this.volumeGain.gain.value = volume / 100;
@@ -288,6 +311,12 @@ class DeckAudio {
     this.lowFilter.gain.value = eq.low;
     this.midFilter.gain.value = eq.mid;
     this.highFilter.gain.value = eq.high;
+  }
+
+  setRate(rate: number) {
+    if (this.howl) {
+      this.howl.rate(rate);
+    }
   }
 
   setCrossfaderGain(gain: number) {
