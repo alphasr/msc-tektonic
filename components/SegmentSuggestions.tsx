@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Filter, TrendingUp } from 'lucide-react';
+import { RefreshCw, Filter, TrendingUp, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -17,9 +17,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { SegmentSuggestion } from '@/types';
+import {
+  SegmentSuggestion,
+  AudioFeatures,
+  MLPerformanceMetrics,
+} from '@/types';
 import SegmentCard from './SegmentCard';
 import { cn } from '@/lib/utils';
+import { getMLManager } from '@/lib/ml-manager';
 
 interface SegmentSuggestionsProps {
   currentTrackId: string | null;
@@ -28,6 +33,7 @@ interface SegmentSuggestionsProps {
   onAddSegment: (segment: SegmentSuggestion) => void;
   onPreviewSegment: (segment: SegmentSuggestion) => void;
   playlistSegmentIds?: string[];
+  deckId?: 'A' | 'B'; // Which deck we're suggesting for
 }
 
 export default function SegmentSuggestions({
@@ -37,15 +43,22 @@ export default function SegmentSuggestions({
   onAddSegment,
   onPreviewSegment,
   playlistSegmentIds = [],
+  deckId = 'A',
 }: SegmentSuggestionsProps) {
   const [suggestions, setSuggestions] = useState<SegmentSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<'score' | 'tempo' | 'key' | 'energy'>(
-    'score'
+    'score',
   );
   const [minScore, setMinScore] = useState(0.5);
+  const [mlActive, setMlActive] = useState(false);
+  const [currentFeatures, setCurrentFeatures] = useState<AudioFeatures | null>(
+    null,
+  );
+  const [metrics, setMetrics] = useState<MLPerformanceMetrics | null>(null);
   const lastPositionRef = useRef<number>(-1);
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const mlManagerRef = useRef(getMLManager());
 
   const fetchSuggestions = async () => {
     if (!currentTrackId || currentPosition < 0) {
@@ -70,6 +83,34 @@ export default function SegmentSuggestions({
       const data = await response.json();
       let fetchedSuggestions = data.suggestions || [];
 
+      // Apply live frequency adaptation
+      if (currentFeatures && fetchedSuggestions.length > 0) {
+        fetchedSuggestions = fetchedSuggestions.map(
+          (seg: SegmentSuggestion) => {
+            // Calculate frequency conflict
+            // If current deck has high low frequencies, flag segments that also have high low
+            const currentLow = currentFeatures.low;
+            const currentMid = currentFeatures.mid;
+            const currentHigh = currentFeatures.high;
+
+            // Estimate frequency conflict (simplified - would need segment's frequency profile)
+            // For now, use a heuristic: boost suggestions that complement current frequency distribution
+            let frequencyConflict = 0;
+
+            // If current track is bass-heavy (low > 0.5), prefer segments with less bass
+            if (currentLow > 0.5) {
+              // Prefer high-frequency segments
+              frequencyConflict = currentLow * 0.7; // Higher conflict if both are bass-heavy
+            }
+
+            return {
+              ...seg,
+              frequencyConflict,
+            };
+          },
+        );
+      }
+
       // Sort suggestions
       fetchedSuggestions = [...fetchedSuggestions].sort(
         (a: SegmentSuggestion, b: SegmentSuggestion) => {
@@ -83,7 +124,7 @@ export default function SegmentSuggestions({
             default:
               return b.score - a.score;
           }
-        }
+        },
       );
 
       setSuggestions(fetchedSuggestions);
@@ -95,15 +136,43 @@ export default function SegmentSuggestions({
     }
   };
 
-  // Auto-update when position changes significantly
+  // Auto-update when position changes significantly OR when real-time features update
   useEffect(() => {
     if (!isPlaying || !currentTrackId) {
       if (updateIntervalRef.current) {
         clearInterval(updateIntervalRef.current);
         updateIntervalRef.current = null;
       }
+      mlManagerRef.current.stop();
+      setMlActive(false);
       return;
     }
+
+    // Start ML Manager for real-time feature extraction
+    mlManagerRef.current.start();
+    setMlActive(true);
+
+    // Subscribe to feature updates
+    const unsubscribeFeatures = mlManagerRef.current.onFeatures((features) => {
+      if (features.deckId === deckId) {
+        setCurrentFeatures(features);
+
+        // Trigger suggestion refresh based on features
+        // For now, still using position-based updates but enriched with real-time data
+        const positionDiff = Math.abs(
+          features.timestamp - lastPositionRef.current,
+        );
+        if (positionDiff > 5) {
+          lastPositionRef.current = features.timestamp;
+          fetchSuggestions();
+        }
+      }
+    });
+
+    // Update metrics periodically
+    const metricsInterval = setInterval(() => {
+      setMetrics(mlManagerRef.current.getMetrics());
+    }, 1000);
 
     // Check if position changed significantly (more than 5 seconds)
     const positionDiff = Math.abs(currentPosition - lastPositionRef.current);
@@ -112,12 +181,12 @@ export default function SegmentSuggestions({
       fetchSuggestions();
     }
 
-    // Set up interval to check every 3 seconds
+    // Set up interval to check every 3 seconds (fallback for when features don't trigger)
     if (!updateIntervalRef.current) {
       updateIntervalRef.current = setInterval(() => {
         if (isPlaying && currentTrackId) {
           const currentDiff = Math.abs(
-            currentPosition - lastPositionRef.current
+            currentPosition - lastPositionRef.current,
           );
           if (currentDiff > 5) {
             lastPositionRef.current = currentPosition;
@@ -128,12 +197,14 @@ export default function SegmentSuggestions({
     }
 
     return () => {
+      unsubscribeFeatures();
+      clearInterval(metricsInterval);
       if (updateIntervalRef.current) {
         clearInterval(updateIntervalRef.current);
         updateIntervalRef.current = null;
       }
     };
-  }, [currentPosition, isPlaying, currentTrackId, minScore, sortBy]);
+  }, [currentPosition, isPlaying, currentTrackId, minScore, sortBy, deckId]);
 
   // Initial fetch
   useEffect(() => {
@@ -146,7 +217,7 @@ export default function SegmentSuggestions({
     // Check if this segment is already in playlist by comparing trackId and position
     // This is a simplified check
     return playlistSegmentIds.includes(
-      `${segment.trackId}_${segment.position}`
+      `${segment.trackId}_${segment.position}`,
     );
   };
 
@@ -154,9 +225,17 @@ export default function SegmentSuggestions({
     <Card className='h-full flex flex-col'>
       <CardHeader className='pb-3'>
         <div className='flex items-center justify-between mb-2'>
-          <CardTitle className='text-sm font-bold'>
-            Segment Suggestions
-          </CardTitle>
+          <div className='flex items-center gap-2'>
+            <CardTitle className='text-sm font-bold'>
+              Segment Suggestions
+            </CardTitle>
+            {mlActive && (
+              <div className='flex items-center gap-1 text-xs text-green-500'>
+                <Zap className='w-3 h-3' />
+                <span>AI</span>
+              </div>
+            )}
+          </div>
           <Button
             variant='ghost'
             size='sm'
@@ -168,7 +247,14 @@ export default function SegmentSuggestions({
           </Button>
         </div>
         <CardDescription className='text-xs'>
-          Compatible segments for live mixing
+          {mlActive ? (
+            <span>
+              Real-time AI suggestions • {metrics?.frameRate.toFixed(0) || '60'}{' '}
+              fps
+            </span>
+          ) : (
+            'Compatible segments for live mixing'
+          )}
         </CardDescription>
         <div className='flex gap-2 mt-2'>
           <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>

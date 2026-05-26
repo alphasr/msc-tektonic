@@ -234,4 +234,71 @@ export interface SegmentSuggestion {
     contour: number;
   };
   waveform?: number[]; // Waveform preview for segment
+  // Real-time AI enhancements
+  mlScore?: number; // ML-predicted compatibility score
+  optimalTransitionTime?: number; // Seconds remaining until optimal mix point
+  explanation?: string; // Natural language explanation from LLM
+  frequencyConflict?: number; // 0-1, how much this clashes with current deck
+  cuePoint?: number; // Beat-aligned entry point (adjusted from position)
+}
+
+// Real-time ML Feature Vector (64-dim extracted every frame)
+export interface AudioFeatures {
+  timestamp: number; // Playback position in seconds
+  // Frequency spectrum (32 bins from FFT)
+  spectrum: Float32Array; // 32 frequency bins (0-1 normalized)
+  // Derived features
+  spectralCentroid: number; // Center of mass of spectrum
+  spectralFlux: number; // Rate of change in spectrum
+  energy: number; // RMS energy
+  energyDelta: number; // Change in energy from previous frame
+  tempoDelta: number; // Deviation from track BPM
+  // Frequency bands
+  low: number; // <250Hz energy
+  mid: number; // 250-8000Hz energy
+  high: number; // >8000Hz energy
+  // Context
+  deckId: 'A' | 'B';
+  trackId: string;
+}
+
+// LLM Prediction from local phi-4-mini
+export interface LLMPrediction {
+  timestamp: number;
+  trackId: string;
+  position: number;
+  // Predictions
+  suggestedSegments: Array<{
+    trackId: string;
+    position: number;
+    confidence: number; // 0-1
+    optimalTransitionTime: number; // Seconds until best mix point
+    reasoning: string;
+  }>;
+  // Context boost multipliers
+  contextBoosts: Map<string, number>; // trackId -> boost (0.5-2.0)
+  // Explanations
+  transitionExplanation: string;
+  energyTrend: 'rising' | 'falling' | 'stable';
+  mixingAdvice: string;
+}
+
+// Mix History for context learning
+export interface MixHistoryEntry {
+  timestamp: number;
+  fromTrackId: string;
+  fromPosition: number;
+  toTrackId: string;
+  toPosition: number;
+  features: AudioFeatures;
+  userSelected: boolean; // vs auto-suggested
+}
+
+// Performance monitoring
+export interface MLPerformanceMetrics {
+  frameRate: number; // Current fps
+  avgInferenceTime: number; // ms per frame
+  workerBacklog: number; // Queued frames
+  cpuUsage: number; // Estimated %
+  degradationLevel: 'none' | 'minor' | 'moderate' | 'severe';
 }

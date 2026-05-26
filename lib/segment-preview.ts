@@ -36,6 +36,12 @@ export function previewSegment(segment: SegmentSuggestion): Promise<void> {
 
       currentPreview = sound;
       sound.play();
+      
+      // Seek to segment position if it's not at 0
+      // We do this after play() because the backend returns the full file
+      if (segment.position > 0) {
+        sound.seek(segment.position);
+      }
     } catch (error) {
       console.error('Failed to create preview:', error);
       reject(error);
@@ -110,12 +116,18 @@ export function previewTransition(trackAId: string, trackBId: string, fromPos: n
       currentPreviewB = soundB;
 
       soundA.play();
+      if (startA > 0) {
+        soundA.seek(startA);
+      }
 
       // At 8s mark, start fading A out and play B fading in
       setTimeout(() => {
         if (currentPreviewA === soundA) {
           soundA.fade(0.8, 0, 4000); // 4-second fade out
           soundB.play();
+          if (toPos > 0) {
+            soundB.seek(toPos);
+          }
           soundB.fade(0, 0.8, 4000); // 4-second fade in
         }
       }, 8000);

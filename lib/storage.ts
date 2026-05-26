@@ -18,6 +18,9 @@ export interface TrackManifest {
   error_reason?: string
   created_at: string
   updated_at: string
+  // Spotify-imported tracks
+  source?: 'local' | 'spotify'
+  spotify_preview_url?: string
 }
 
 export interface TrackSummary {

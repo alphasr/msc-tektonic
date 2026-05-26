@@ -1,38 +1,45 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050505; /* Deeper black */
-  --foreground: #f8fafc;
-  --card: #0f1115; /* Even darker glass base */
-  --card-foreground: #f8fafc;
-  --popover: #0f1115;
-  --popover-foreground: #f8fafc;
-  
-  --primary: #00f0ff; /* Brighter Neon Cyan */
-  --primary-foreground: #000000;
-  
-  --secondary: #ff0055; /* Neon Pink/Rose */
+  /* Core palette — professional dark DJ aesthetic (Serato/Pioneer-inspired) */
+  --background: #080a0d;
+  --foreground: #dde4f0;
+  --card: #0d1018;
+  --card-foreground: #dde4f0;
+  --popover: #0d1018;
+  --popover-foreground: #dde4f0;
+
+  --primary: #00c8e8;
+  --primary-foreground: #000e14;
+
+  --secondary: #e8334a;
   --secondary-foreground: #ffffff;
-  
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  
-  --accent: #1e293b;
-  --accent-foreground: #f8fafc;
-  
-  --destructive: #ef4444;
+
+  --muted: #181c26;
+  --muted-foreground: #7a8699;
+
+  --accent: #181c26;
+  --accent-foreground: #dde4f0;
+
+  --destructive: #e85555;
   --destructive-foreground: #ffffff;
-  
-  --border: rgba(255, 255, 255, 0.08); /* More subtle borders for glass effect */
-  --input: rgba(255, 255, 255, 0.05);
-  --ring: #00f0ff;
-  --radius: 0.75rem; /* Slightly rounder for modern look */
-  
-  /* Deck colors */
-  --deck-a: #00f0ff;
-  --deck-b: #ff0055;
-  --deck-a-bg: rgba(0, 240, 255, 0.03);
-  --deck-b-bg: rgba(255, 0, 85, 0.03);
+
+  --border: rgba(255, 255, 255, 0.055);
+  --input: rgba(255, 255, 255, 0.04);
+  --ring: #00c8e8;
+  --radius: 0.45rem;
+
+  /* Deck identity colors */
+  --deck-a: #1ac8e8;
+  --deck-b: #e8334a;
+  --deck-a-bg: rgba(26, 200, 232, 0.03);
+  --deck-b-bg: rgba(232, 51, 74, 0.03);
+
+  /* Hot cue pad colors — Serato/Pioneer standard palette */
+  --hc-1: #ff6a00;
+  --hc-2: #0078ff;
+  --hc-3: #00cc44;
+  --hc-4: #ffcc00;
 }
 
 @theme inline {
@@ -71,28 +78,28 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Base resets for typography */
 h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Ultra-thin scrollbar */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Range input base reset */
+input[type="range"] { -webkit-appearance: none; background: transparent; }
+input[type="range"]:focus { outline: none; }
+
+/* Subtle glow animation for playing indicator */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
-::-webkit-scrollbar-track {
-  background: var(--background);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--muted);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
-}
+.playing-dot { animation: pulse-glow 1.2s ease-in-out infinite; }

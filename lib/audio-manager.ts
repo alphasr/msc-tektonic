@@ -18,8 +18,9 @@ export class AudioManager {
   private disposed: boolean = false;
 
   constructor() {
-    this.audioContext = new (window.AudioContext ||
-      (window as any).webkitAudioContext)();
+    this.audioContext = new (
+      window.AudioContext || (window as any).webkitAudioContext
+    )();
     this.masterGain = this.audioContext.createGain();
     this.masterGain.connect(this.audioContext.destination);
     this.masterGain.gain.value = 0.5; // Default master volume
@@ -29,8 +30,9 @@ export class AudioManager {
     // Check if AudioContext is still valid
     if (this.audioContext.state === 'closed') {
       // Recreate AudioContext if it was closed
-      this.audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+      this.audioContext = new (
+        window.AudioContext || (window as any).webkitAudioContext
+      )();
       this.masterGain = this.audioContext.createGain();
       this.masterGain.connect(this.audioContext.destination);
       this.masterGain.gain.value = 0.5;
@@ -134,11 +136,12 @@ class DeckAudio {
   private analyser: AnalyserNode;
   private freqData: Uint8Array;
   private deckId: 'A' | 'B';
+  private pendingSeek: number | null = null;
 
   constructor(
     audioContext: AudioContext,
     masterGain: GainNode,
-    deckId: 'A' | 'B'
+    deckId: 'A' | 'B',
   ) {
     this.audioContext = audioContext;
     this.masterGain = masterGain;
@@ -165,9 +168,9 @@ class DeckAudio {
     this.volumeGain = audioContext.createGain();
     this.crossfaderGain = audioContext.createGain();
     this.deckGain = audioContext.createGain();
-    
+
     this.analyser = audioContext.createAnalyser();
-    this.analyser.fftSize = 64; // 32 frequency bins
+    this.analyser.fftSize = 256; // 128 frequency bins (increased for better ML features)
     this.analyser.smoothingTimeConstant = 0.8;
     this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
 
@@ -239,7 +242,7 @@ class DeckAudio {
         onloaderror: (id: number, error: any) => {
           console.error(`❌ Failed to load audio from ${url}:`, error);
           reject(
-            new Error(`Failed to load audio: ${error || 'Unknown error'}`)
+            new Error(`Failed to load audio: ${error || 'Unknown error'}`),
           );
         },
         onplayerror: (id: number, error: any) => {
@@ -250,11 +253,27 @@ class DeckAudio {
     });
   }
 
-  play() {
+  play(startTime?: number) {
     if (this.audioContext.state === 'suspended') {
       this.audioContext.resume().catch(console.error);
     }
+
     if (this.howl) {
+      // If a specific start time is requested, seek as soon as play starts
+      // This is more reliable for HTML5 audio
+      if (typeof startTime === 'number') {
+        this.howl.once('play', () => {
+          this.howl?.seek(startTime);
+        });
+      } else if (this.pendingSeek !== null) {
+        // If we have a pending seek from before play was called
+        const seekTime = this.pendingSeek;
+        this.howl.once('play', () => {
+          this.howl?.seek(seekTime);
+        });
+        this.pendingSeek = null;
+      }
+
       this.howl.play();
     }
   }
@@ -273,7 +292,24 @@ class DeckAudio {
 
   seek(time: number) {
     if (this.howl) {
-      this.howl.seek(time);
+      // If it's HTML5 audio and not yet playing, a direct seek might fail or be reset on play.
+      // We'll perform the seek now but also queue it for the 'play' event to be sure.
+      try {
+        this.howl.seek(time);
+
+        // Use pendingSeek as a backup for when play() is called next
+        if (!this.howl.playing()) {
+          this.pendingSeek = time;
+        } else {
+          this.pendingSeek = null;
+        }
+      } catch (error) {
+        console.warn('Seek error, queuing for later:', error);
+        this.pendingSeek = time;
+      }
+    } else {
+      // Store seek time for when audio is loaded/played
+      this.pendingSeek = time;
     }
   }
 
@@ -300,6 +336,15 @@ class DeckAudio {
       this.analyser.getByteFrequencyData(this.freqData as any);
     }
     return this.freqData;
+  }
+
+  getFrequencyDataFloat(): Float32Array {
+    // For ML processing - returns dB values in Float32 format
+    const floatData = new Float32Array(this.analyser.frequencyBinCount);
+    if (this.analyser) {
+      this.analyser.getFloatFrequencyData(floatData);
+    }
+    return floatData;
   }
 
   setVolume(volume: number) {

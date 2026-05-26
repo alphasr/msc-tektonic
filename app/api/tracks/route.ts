@@ -41,8 +41,9 @@ export async function GET() {
           key: manifest.summary!.key,
           energy: manifest.summary!.energy,
           duration: manifest.summary!.duration,
-          tags: [], // Could be extracted from metadata
+          tags: manifest.source === 'spotify' ? ['spotify'] : [],
           phrases: manifest.summary!.phrases,
+          audioUrl: manifest.spotify_preview_url,
           waveform,
         };
       })

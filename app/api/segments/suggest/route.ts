@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     if (!trackId) {
       return NextResponse.json(
         { error: 'trackId is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     if (!currentManifest?.summary) {
       return NextResponse.json(
         { error: 'Current track not found or not analyzed' },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       position,
       scope,
       targetTrackId ? 500 : limit * 2, // get a lot if filtering by target
-      excludeTrackId
+      excludeTrackId,
     );
 
     // Build segment suggestions with full metadata
@@ -72,13 +72,13 @@ export async function GET(request: NextRequest) {
       // Calculate end time
       const endTime = Math.min(
         segment.position + segmentDuration,
-        trackSummary.duration
+        trackSummary.duration,
       );
 
       // Calculate compatibility scores
       const actualKeyScore = calcKeyScore(currentSummary.key, trackSummary.key);
       const keyScore = actualKeyScore;
-      
+
       if (strictKey && keyScore < 0.5) continue; // Skip incompatible keys when strict Mode is on
       const tempoScore =
         Math.abs(trackSummary.tempo_bpm - currentSummary.tempo_bpm) <= 10
@@ -95,11 +95,11 @@ export async function GET(request: NextRequest) {
       ) {
         const currentPhraseIndex = Math.floor(
           (position / currentSummary.duration) *
-            currentFeatures.phraseFrequencies.length
+            currentFeatures.phraseFrequencies.length,
         );
         const segmentPhraseIndex = Math.floor(
           (segment.position / trackSummary.duration) *
-            trackFeatures.phraseFrequencies.length
+            trackFeatures.phraseFrequencies.length,
         );
 
         const currentFreq =
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
         if (currentFreq && segmentFreq) {
           frequencyScore = frequencyCompatibilityScore(
             currentFreq,
-            segmentFreq
+            segmentFreq,
           );
         }
       }
@@ -121,8 +121,8 @@ export async function GET(request: NextRequest) {
       // Contour similarity (already in segment.score)
       const contourScore = segment.score;
 
-      // Overall score
-      const overallScore =
+      // Overall score (algorithmic baseline)
+      const algorithmicScore =
         0.25 * keyScore +
         0.2 * tempoScore +
         0.15 * energyScore +
@@ -130,20 +130,24 @@ export async function GET(request: NextRequest) {
         0.1 * timingScore +
         0.15 * contourScore;
 
+      // ML score will be added client-side via LLM enrichment
+      // For now, use algorithmic score as baseline
+      const overallScore = algorithmicScore;
+
       if (overallScore >= minScore) {
         // Extract waveform segment if available
         let waveformSegment: number[] | undefined;
         if (trackFeatures.waveform && trackFeatures.waveform.length > 0) {
           const waveformStart = Math.floor(
             (segment.position / trackSummary.duration) *
-              trackFeatures.waveform.length
+              trackFeatures.waveform.length,
           );
           const waveformEnd = Math.floor(
-            (endTime / trackSummary.duration) * trackFeatures.waveform.length
+            (endTime / trackSummary.duration) * trackFeatures.waveform.length,
           );
           waveformSegment = trackFeatures.waveform.slice(
             waveformStart,
-            waveformEnd
+            waveformEnd,
           );
         }
 
@@ -184,7 +188,7 @@ export async function GET(request: NextRequest) {
     console.error('Error fetching segment suggestions:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch segment suggestions' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

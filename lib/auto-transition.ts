@@ -71,13 +71,8 @@ export class AutoTransitionManager {
     const audioUrl = `/api/audio/${segment.trackId}?start=${segment.startTime}&end=${segment.endTime}`;
     await deckInstance.load(audioUrl);
 
-    // Seek to start time if segment doesn't start at 0
-    if (segment.startTime > 0) {
-      deckInstance.seek(segment.startTime);
-    }
-
     deckInstance.setVolume(deck === this.currentDeck ? 100 : 0);
-    deckInstance.play();
+    deckInstance.play(segment.startTime);
 
     this.emitEvent({
       type: 'segment_started',

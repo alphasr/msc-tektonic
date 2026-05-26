@@ -279,8 +279,10 @@ class LocalLLMService implements LLMService {
 
     try {
       // Use OpenAI-compatible API format for local models
+      // LLM_BASE_URL already includes the path prefix (e.g. http://localhost:1234/v1)
+      const chatURL = `${this.config.baseURL}/chat/completions`;
       const response = await fetch(
-        `${this.config.baseURL}/v1/chat/completions`,
+        chatURL,
         {
           method: 'POST',
           headers: {

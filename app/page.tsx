@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Navigation from '@/components/Navigation';
 import StatusBar from '@/components/StatusBar';
-import Deck from '@/components/Deck';
+import Deck, { LoopState } from '@/components/Deck';
 import CentralMixer from '@/components/CentralMixer';
 import TrackLibrary from '@/components/TrackLibrary';
 import TrackRecommendations from '@/components/TrackRecommendations';
@@ -24,30 +24,27 @@ import { AutoTransitionManager } from '@/lib/auto-transition';
 import SegmentSuggestions from '@/components/SegmentSuggestions';
 import PlaylistBuilder from '@/components/PlaylistBuilder';
 import { previewSegment, stopPreview, previewTransition } from '@/lib/segment-preview';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
+
+const INITIAL_DECK_STATE: DeckState = {
+  track: null,
+  isPlaying: false,
+  currentTime: 0,
+  volume: 50,
+  eq: { low: 0, mid: 0, high: 0 },
+  rate: 1.0,
+};
+
+const INITIAL_LOOP: LoopState = { start: null, end: null, active: false };
 
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
+
   const [mixerState, setMixerState] = useState<MixerState>({
-    deckA: {
-      track: null,
-      isPlaying: false,
-      currentTime: 0,
-      volume: 50,
-      eq: { low: 0, mid: 0, high: 0 },
-      rate: 1.0,
-    },
-    deckB: {
-      track: null,
-      isPlaying: false,
-      currentTime: 0,
-      volume: 50,
-      eq: { low: 0, mid: 0, high: 0 },
-      rate: 1.0,
-    },
+    deckA: { ...INITIAL_DECK_STATE },
+    deckB: { ...INITIAL_DECK_STATE },
     crossfader: 0,
     masterVolume: 50,
     masterDeck: null,
@@ -62,13 +59,54 @@ export default function Home() {
     latency: 4.8,
   });
 
+  // ── Hot cue state (4 pads per deck) ──
+  const [hotCuesA, setHotCuesAState] = useState<(number | null)[]>([null, null, null, null]);
+  const [hotCuesB, setHotCuesBState] = useState<(number | null)[]>([null, null, null, null]);
+  const hotCuesARef = useRef<(number | null)[]>([null, null, null, null]);
+  const hotCuesBRef = useRef<(number | null)[]>([null, null, null, null]);
+
+  const setHotCuesA = (updater: ((p: (number | null)[]) => (number | null)[]) | (number | null)[]) => {
+    setHotCuesAState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      hotCuesARef.current = next;
+      return next;
+    });
+  };
+  const setHotCuesB = (updater: ((p: (number | null)[]) => (number | null)[]) | (number | null)[]) => {
+    setHotCuesBState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      hotCuesBRef.current = next;
+      return next;
+    });
+  };
+
+  // ── Loop state (with refs for interval access) ──
+  const [loopA, setLoopAState] = useState<LoopState>(INITIAL_LOOP);
+  const [loopB, setLoopBState] = useState<LoopState>(INITIAL_LOOP);
+  const loopARef = useRef<LoopState>(INITIAL_LOOP);
+  const loopBRef = useRef<LoopState>(INITIAL_LOOP);
+
+  const setLoopA = (updater: LoopState | ((p: LoopState) => LoopState)) => {
+    setLoopAState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      loopARef.current = next;
+      return next;
+    });
+  };
+  const setLoopB = (updater: LoopState | ((p: LoopState) => LoopState)) => {
+    setLoopBState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      loopBRef.current = next;
+      return next;
+    });
+  };
+
   const audioManagerRef = useRef<AudioManager | null>(null);
   const deckARef = useRef<ReturnType<AudioManager['createDeck']> | null>(null);
   const deckBRef = useRef<ReturnType<AudioManager['createDeck']> | null>(null);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
-  const midiControllerRef = useRef<ReturnType<typeof getMIDIController> | null>(
-    null
-  );
+  const midiControllerRef = useRef<ReturnType<typeof getMIDIController> | null>(null);
+  const lastUserActionRef = useRef<number>(0);
 
   // Live mode state
   const [liveMode, setLiveMode] = useState<'manual' | 'live'>('manual');
@@ -76,89 +114,47 @@ export default function Home() {
   const playlistManagerRef = useRef<PlaylistManager | null>(null);
   const autoTransitionRef = useRef<AutoTransitionManager | null>(null);
 
-  // Initialize audio manager and MIDI controller
+  // ── Initialize ──
   useEffect(() => {
     audioManagerRef.current = getAudioManager();
     deckARef.current = audioManagerRef.current.createDeck('A');
     deckBRef.current = audioManagerRef.current.createDeck('B');
-
-    // Initialize playlist manager
     playlistManagerRef.current = new PlaylistManager();
 
-    // Initialize MIDI controller
     midiControllerRef.current = getMIDIController();
     midiControllerRef.current.initialize().then((success) => {
       if (success) {
-        console.log('MIDI controller connected');
-        // Setup handlers after a short delay to ensure function is defined
         setTimeout(() => {
-          if (
-            midiControllerRef.current &&
-            midiControllerRef.current.getInitialized()
-          ) {
-            setupMIDIHandlers();
-          }
+          if (midiControllerRef.current?.getInitialized()) setupMIDIHandlers();
         }, 200);
-      } else {
-        console.warn('MIDI controller not available');
       }
     });
 
     return () => {
-      if (progressInterval.current) {
-        clearInterval(progressInterval.current);
-        progressInterval.current = null;
-      }
-      // Don't dispose audio manager on unmount - it's a singleton
-      // Only dispose decks if needed
-      if (deckARef.current) {
-        deckARef.current.dispose();
-        deckARef.current = null;
-      }
-      if (deckBRef.current) {
-        deckBRef.current.dispose();
-        deckBRef.current = null;
-      }
-      if (midiControllerRef.current) {
-        midiControllerRef.current.dispose();
-        midiControllerRef.current = null;
-      }
-      if (autoTransitionRef.current) {
-        autoTransitionRef.current.stop();
-        autoTransitionRef.current = null;
-      }
+      if (progressInterval.current) clearInterval(progressInterval.current);
+      deckARef.current?.dispose();
+      deckARef.current = null;
+      deckBRef.current?.dispose();
+      deckBRef.current = null;
+      midiControllerRef.current?.dispose();
+      midiControllerRef.current = null;
+      autoTransitionRef.current?.stop();
+      autoTransitionRef.current = null;
       stopPreview();
     };
   }, []);
 
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  useEffect(() => { setIsMounted(true); }, []);
 
-  // Timestamp of last user-initiated play/pause/stop action.
-  // The progress interval will NOT override isPlaying state for 200ms after a user action,
-  // preventing the race where the audio engine hasn't processed the command yet.
-  const lastUserActionRef = useRef<number>(0);
-
-  // Handler functions (must be defined before MIDI setup)
+  // ── Transport handlers ──
   const handlePlay = (deck: 'A' | 'B') => {
     const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
     if (!deckRef) return;
-
-    // Read current state synchronously to check for track
-    setMixerState((prev) => {
-      if (!prev[deckKey].track) {
-        console.warn(`Cannot play: No track loaded on deck ${deck}`);
-        return prev;
-      }
-      return {
-        ...prev,
-        [deckKey]: { ...prev[deckKey], isPlaying: true },
-      };
+    setMixerState(prev => {
+      if (!prev[deckKey].track) return prev;
+      return { ...prev, [deckKey]: { ...prev[deckKey], isPlaying: true } };
     });
-
-    // Side effect OUTSIDE the updater
     lastUserActionRef.current = Date.now();
     deckRef.play();
   };
@@ -167,459 +163,328 @@ export default function Home() {
     const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
     if (!deckRef) return;
-
-    // Side effect first, then update state
     lastUserActionRef.current = Date.now();
     deckRef.pause();
-    setMixerState((prev) => ({
-      ...prev,
-      [deckKey]: { ...prev[deckKey], isPlaying: false },
-    }));
+    setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], isPlaying: false } }));
   };
 
   const handleStop = (deck: 'A' | 'B') => {
     const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
-    if (deckRef) {
-      lastUserActionRef.current = Date.now();
-      deckRef.stop();
-      setMixerState((prev) => ({
-        ...prev,
-        [deckKey]: {
-          ...prev[deckKey],
-          isPlaying: false,
-          currentTime: 0,
-        },
-      }));
-    }
+    if (!deckRef) return;
+    lastUserActionRef.current = Date.now();
+    deckRef.stop();
+    setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], isPlaying: false, currentTime: 0 } }));
   };
 
   const handleCue = (deck: 'A' | 'B') => {
     const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
-    if (deckRef) {
-      lastUserActionRef.current = Date.now();
-      deckRef.seek(0);
-      deckRef.pause();
-      setMixerState((prev) => ({
-        ...prev,
-        [deckKey]: {
-          ...prev[deckKey],
-          isPlaying: false,
-          currentTime: 0,
-        },
-      }));
-    }
+    if (!deckRef) return;
+    lastUserActionRef.current = Date.now();
+    deckRef.seek(0);
+    deckRef.pause();
+    setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], isPlaying: false, currentTime: 0 } }));
   };
 
   const handleSetMasterDeck = (deck: 'A' | 'B') => {
-    setMixerState((prev) => ({
-      ...prev,
-      masterDeck: prev.masterDeck === deck ? null : deck,
-    }));
+    setMixerState(prev => ({ ...prev, masterDeck: prev.masterDeck === deck ? null : deck }));
   };
 
   const handleSync = (deck: 'A' | 'B') => {
-    setMixerState((prev) => {
-      let currentMaster = prev.masterDeck;
-      // Auto-assign to opposite deck if no master is set (Virtual DJ behavior)
-      if (!currentMaster) {
-        currentMaster = deck === 'A' ? 'B' : 'A';
-      }
-      if (currentMaster === deck) return prev;
-
-      const sourceDeckState = deck === 'A' ? prev.deckA : prev.deckB;
-      const targetDeckState = currentMaster === 'A' ? prev.deckA : prev.deckB;
-
-      if (!sourceDeckState.track || !targetDeckState.track) return prev;
-
-      const targetEffectiveBpm = targetDeckState.track.bpm * (targetDeckState.rate ?? 1.0);
-      const sourceBpm = sourceDeckState.track.bpm;
-      if (!targetEffectiveBpm || !sourceBpm) return prev;
-
-      const newRate = targetEffectiveBpm / sourceBpm;
-
+    setMixerState(prev => {
+      let master = prev.masterDeck;
+      if (!master) master = deck === 'A' ? 'B' : 'A';
+      if (master === deck) return prev;
+      const src = deck === 'A' ? prev.deckA : prev.deckB;
+      const tgt = master === 'A' ? prev.deckA : prev.deckB;
+      if (!src.track || !tgt.track) return prev;
+      const targetBpm = tgt.track.bpm * (tgt.rate ?? 1.0);
+      const newRate = targetBpm / src.track.bpm;
       const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
-      if (deckRef) {
-        deckRef.setRate(newRate);
-      }
-
-      const deckKey = deck === 'A' ? 'deckA' : 'deckB';
-      return {
-        ...prev,
-        [deckKey]: { ...prev[deckKey], rate: newRate },
-      };
+      deckRef?.setRate(newRate);
+      return { ...prev, [deck === 'A' ? 'deckA' : 'deckB']: { ...(deck === 'A' ? prev.deckA : prev.deckB), rate: newRate } };
     });
   };
 
   const handleRateChange = (deck: 'A' | 'B', newRate: number) => {
-    setMixerState((prev) => {
-      const deckKey = deck === 'A' ? 'deckA' : 'deckB';
-      const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
-      if (deckRef) {
-        deckRef.setRate(newRate);
-      }
-      return {
-        ...prev,
-        [deckKey]: { ...prev[deckKey], rate: newRate },
-      };
+    const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
+    deckRef?.setRate(newRate);
+    setMixerState(prev => ({ ...prev, [deck === 'A' ? 'deckA' : 'deckB']: { ...(deck === 'A' ? prev.deckA : prev.deckB), rate: newRate } }));
+  };
+
+  const handleSeek = (deck: 'A' | 'B', time: number) => {
+    const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
+    deckRef?.seek(time);
+    setMixerState(prev => ({ ...prev, [deck === 'A' ? 'deckA' : 'deckB']: { ...(deck === 'A' ? prev.deckA : prev.deckB), currentTime: time } }));
+  };
+
+  // ── Hot cue handlers ──
+  const handleHotCuePress = (deck: 'A' | 'B', index: number) => {
+    const cues = deck === 'A' ? hotCuesARef.current : hotCuesBRef.current;
+    const setCues = deck === 'A' ? setHotCuesA : setHotCuesB;
+    if (cues[index] !== null) {
+      // Trigger: jump to cue
+      handleSeek(deck, cues[index]!);
+    } else {
+      // Set: store current position
+      const currentTime = deck === 'A'
+        ? (deckARef.current?.getCurrentTime() ?? mixerState.deckA.currentTime)
+        : (deckBRef.current?.getCurrentTime() ?? mixerState.deckB.currentTime);
+      setCues(prev => prev.map((c, i) => i === index ? currentTime : c) as (number | null)[]);
+    }
+  };
+
+  const handleHotCueClear = (deck: 'A' | 'B', index: number) => {
+    const setCues = deck === 'A' ? setHotCuesA : setHotCuesB;
+    setCues(prev => prev.map((c, i) => i === index ? null : c) as (number | null)[]);
+  };
+
+  // ── Loop handlers ──
+  const handleLoopIn = (deck: 'A' | 'B') => {
+    const currentTime = deck === 'A'
+      ? (deckARef.current?.getCurrentTime() ?? mixerState.deckA.currentTime)
+      : (deckBRef.current?.getCurrentTime() ?? mixerState.deckB.currentTime);
+    const setLoop = deck === 'A' ? setLoopA : setLoopB;
+    setLoop(prev => ({ ...prev, start: currentTime, end: null, active: false }));
+  };
+
+  const handleLoopOut = (deck: 'A' | 'B') => {
+    const currentTime = deck === 'A'
+      ? (deckARef.current?.getCurrentTime() ?? mixerState.deckA.currentTime)
+      : (deckBRef.current?.getCurrentTime() ?? mixerState.deckB.currentTime);
+    const setLoop = deck === 'A' ? setLoopA : setLoopB;
+    setLoop(prev => {
+      if (prev.start === null || currentTime <= prev.start) return prev;
+      return { start: prev.start, end: currentTime, active: true };
     });
   };
 
+  const handleLoopToggle = (deck: 'A' | 'B') => {
+    const setLoop = deck === 'A' ? setLoopA : setLoopB;
+    setLoop(prev => {
+      if (prev.start === null || prev.end === null) return prev;
+      return { ...prev, active: !prev.active };
+    });
+  };
+
+  const handleLoopHalve = (deck: 'A' | 'B') => {
+    const setLoop = deck === 'A' ? setLoopA : setLoopB;
+    setLoop(prev => {
+      if (prev.start === null || prev.end === null) return prev;
+      return { ...prev, end: prev.start + (prev.end - prev.start) / 2 };
+    });
+  };
+
+  const handleLoopDouble = (deck: 'A' | 'B') => {
+    const setLoop = deck === 'A' ? setLoopA : setLoopB;
+    setLoop(prev => {
+      if (prev.start === null || prev.end === null) return prev;
+      return { ...prev, end: prev.start + (prev.end - prev.start) * 2 };
+    });
+  };
+
+  // ── Auto transition ──
   const handleAutoTransition = async () => {
-    const activeDeck = mixerState.crossfader <= 0 ? 'A' : 'B';
+    const snapshot = await new Promise<MixerState>((resolve) => {
+      setMixerState(prev => { resolve(prev); return prev; });
+    });
+
+    const activeDeck = snapshot.crossfader <= 0 ? 'A' : 'B';
     const targetDeck = activeDeck === 'A' ? 'B' : 'A';
     const targetDeckKey = targetDeck === 'A' ? 'deckA' : 'deckB';
     const activeDeckKey = activeDeck === 'A' ? 'deckA' : 'deckB';
-    const activeTrack = mixerState[activeDeckKey].track;
-    const targetTrack = mixerState[targetDeckKey].track;
+    const activeTrack = snapshot[activeDeckKey].track;
+    const targetTrack = snapshot[targetDeckKey].track;
 
-    if (!targetTrack || !activeTrack) {
-      console.warn(`Cannot transition: Both decks must have a loaded track`);
-      return;
-    }
-
-    // Try to find the AI optimal starting point using cosine similarity (15s phrasing)
-    try {
-      const activeCurrentTime = activeDeck === 'A' && deckARef.current ? deckARef.current.getCurrentTime() :
-                                activeDeck === 'B' && deckBRef.current ? deckBRef.current.getCurrentTime() : 0;
-      
-      const searchParams = new URLSearchParams({
-        trackId: activeTrack.id,
-        position: activeCurrentTime.toString(),
-        targetTrackId: targetTrack.id,
-        limit: '1',
-      });
-      const res = await fetch(`/api/segments/suggest?${searchParams}`);
-      if (res.ok) {
-        const data = await res.json();
-        const bestMatch = data.suggestions[0];
-        if (bestMatch && bestMatch.trackId === targetTrack.id) {
-           console.log(`Auto Mix: Found AI optimal start point at ${bestMatch.position}s (Score: ${bestMatch.score})`);
-           handleSeek(targetDeck, bestMatch.position);
-           
-           // If we're setting an AI transition, also sync BPM!
-           handleSync(targetDeck);
-        }
-      }
-    } catch (e) {
-       console.error("AI Transition fallback: could not fetch suggestion", e);
-    }
+    if (!targetTrack || !activeTrack) return;
 
     const targetDeckRef = targetDeck === 'A' ? deckARef.current : deckBRef.current;
-    if (targetDeckRef && !mixerState[targetDeckKey].isPlaying) {
+
+    try {
+      const activeCurrentTime = activeDeck === 'A'
+        ? (deckARef.current?.getCurrentTime() ?? 0)
+        : (deckBRef.current?.getCurrentTime() ?? 0);
+      const res = await fetch(
+        `/api/segments/suggest?${new URLSearchParams({
+          trackId: activeTrack.id,
+          position: activeCurrentTime.toString(),
+          targetTrackId: targetTrack.id,
+          limit: '1',
+        })}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const best = data.suggestions[0];
+        if (best?.trackId === targetTrack.id && targetDeckRef) {
+          targetDeckRef.seek(best.position);
+          handleSync(targetDeck);
+        }
+      }
+    } catch {}
+
+    if (targetDeckRef && !snapshot[targetDeckKey].isPlaying) {
       lastUserActionRef.current = Date.now();
       targetDeckRef.play();
-      setMixerState((prev) => ({ 
-        ...prev, 
-        [targetDeckKey]: { ...prev[targetDeckKey], isPlaying: true } 
-      }));
+      setMixerState(prev => ({ ...prev, [targetDeckKey]: { ...prev[targetDeckKey], isPlaying: true } }));
     }
 
     const duration = 4000;
     const steps = 40;
-    const intervalDelay = duration / steps;
-    const startFader = mixerState.crossfader;
+    const startFader = snapshot.crossfader;
     const targetFader = activeDeck === 'A' ? 100 : -100;
-    const faderStep = (targetFader - startFader) / steps;
+    let step = 0;
 
-    let currentStep = 0;
-    const transitionInterval = setInterval(() => {
-      currentStep++;
-      if (currentStep >= steps) {
-        clearInterval(transitionInterval);
-        
+    const tid = setInterval(() => {
+      step++;
+      if (step >= steps) {
+        clearInterval(tid);
         const activeRef = activeDeck === 'A' ? deckARef.current : deckBRef.current;
-        if (activeRef) {
-           lastUserActionRef.current = Date.now();
-           activeRef.pause();
-        }
-
-        setMixerState((prev) => ({
+        activeRef?.pause();
+        setMixerState(prev => ({
           ...prev,
           crossfader: targetFader,
-          [activeDeckKey]: { ...prev[activeDeckKey], isPlaying: false }
+          [activeDeckKey]: { ...prev[activeDeckKey], isPlaying: false },
         }));
-        if (audioManagerRef.current) {
-          audioManagerRef.current.setCrossfader(targetFader);
-        }
+        audioManagerRef.current?.setCrossfader(targetFader);
       } else {
-        // Use an equal-power (cosine) crossfade curve for better volume control
-        // Instead of linear `(faderStep * currentStep)`, we could map start to target
-        const progress = currentStep / steps; // 0 to 1
-        const cosineBlend = 0.5 - 0.5 * Math.cos(progress * Math.PI); // Smooth ease-in-out
-        const newValue = startFader + ((targetFader - startFader) * cosineBlend);
-
-        setMixerState((prev) => ({ ...prev, crossfader: newValue }));
-        if (audioManagerRef.current) {
-          audioManagerRef.current.setCrossfader(newValue);
-        }
+        const blend = 0.5 - 0.5 * Math.cos((step / steps) * Math.PI);
+        const val = startFader + (targetFader - startFader) * blend;
+        setMixerState(prev => ({ ...prev, crossfader: val }));
+        audioManagerRef.current?.setCrossfader(val);
       }
-    }, intervalDelay);
+    }, duration / steps);
   };
 
-  // Setup MIDI event handlers (defined after handler functions)
+  // ── MIDI setup ──
   const setupMIDIHandlers = () => {
-    if (
-      !midiControllerRef.current ||
-      !midiControllerRef.current.getInitialized()
-    ) {
-      console.warn('MIDI not initialized yet, cannot setup handlers');
-      return;
-    }
-
     const midi = midiControllerRef.current;
-    console.log('Setting up MIDI handlers...');
+    if (!midi?.getInitialized()) return;
 
-    // Deck A controls
-    const handleDeckAPlay = () => handlePlay('A');
-    const handleDeckAPause = () => handlePause('A');
-    const handleDeckAStop = () => handleStop('A');
-    const handleDeckACue = () => handleCue('A');
-    const handleDeckAVolume = (value: number) => {
-      setMixerState((prev) => ({
-        ...prev,
-        deckA: { ...prev.deckA, volume: value },
-      }));
-      if (deckARef.current) {
-        deckARef.current.setVolume(value);
-      }
-    };
-    const handleDeckALow = (value: number) => {
-      setMixerState((prev) => {
-        const newState = {
-          ...prev,
-          deckA: { ...prev.deckA, eq: { ...prev.deckA.eq, low: value } },
-        };
-        if (deckARef.current) {
-          deckARef.current.setEQ(newState.deckA.eq);
-        }
-        return newState;
-      });
-    };
-    const handleDeckAMid = (value: number) => {
-      setMixerState((prev) => {
-        const newState = {
-          ...prev,
-          deckA: { ...prev.deckA, eq: { ...prev.deckA.eq, mid: value } },
-        };
-        if (deckARef.current) {
-          deckARef.current.setEQ(newState.deckA.eq);
-        }
-        return newState;
-      });
-    };
-    const handleDeckAHigh = (value: number) => {
-      setMixerState((prev) => {
-        const newState = {
-          ...prev,
-          deckA: { ...prev.deckA, eq: { ...prev.deckA.eq, high: value } },
-        };
-        if (deckARef.current) {
-          deckARef.current.setEQ(newState.deckA.eq);
-        }
-        return newState;
-      });
-    };
+    // Deck A transport
+    midi.on('deckA_play', () => handlePlay('A'));
+    midi.on('deckA_pause', () => handlePause('A'));
+    midi.on('deckA_stop', () => handleStop('A'));
+    midi.on('deckA_cue', () => handleCue('A'));
+    // Deck B transport
+    midi.on('deckB_play', () => handlePlay('B'));
+    midi.on('deckB_pause', () => handlePause('B'));
+    midi.on('deckB_stop', () => handleStop('B'));
+    midi.on('deckB_cue', () => handleCue('B'));
 
-    // Deck B controls
-    const handleDeckBPlay = () => handlePlay('B');
-    const handleDeckBPause = () => handlePause('B');
-    const handleDeckBStop = () => handleStop('B');
-    const handleDeckBCue = () => handleCue('B');
-    const handleDeckBVolume = (value: number) => {
-      setMixerState((prev) => ({
-        ...prev,
-        deckB: { ...prev.deckB, volume: value },
-      }));
-      if (deckBRef.current) {
-        deckBRef.current.setVolume(value);
-      }
-    };
-    const handleDeckBLow = (value: number) => {
-      setMixerState((prev) => {
-        const newState = {
-          ...prev,
-          deckB: { ...prev.deckB, eq: { ...prev.deckB.eq, low: value } },
-        };
-        if (deckBRef.current) {
-          deckBRef.current.setEQ(newState.deckB.eq);
-        }
-        return newState;
-      });
-    };
-    const handleDeckBMid = (value: number) => {
-      setMixerState((prev) => {
-        const newState = {
-          ...prev,
-          deckB: { ...prev.deckB, eq: { ...prev.deckB.eq, mid: value } },
-        };
-        if (deckBRef.current) {
-          deckBRef.current.setEQ(newState.deckB.eq);
-        }
-        return newState;
-      });
-    };
-    const handleDeckBHigh = (value: number) => {
-      setMixerState((prev) => {
-        const newState = {
-          ...prev,
-          deckB: { ...prev.deckB, eq: { ...prev.deckB.eq, high: value } },
-        };
-        if (deckBRef.current) {
-          deckBRef.current.setEQ(newState.deckB.eq);
-        }
-        return newState;
-      });
-    };
-
-    // Mixer controls
-    const handleCrossfader = (value: number) => {
-      setMixerState((prev) => ({ ...prev, crossfader: value }));
-      if (audioManagerRef.current) {
-        audioManagerRef.current.setCrossfader(value);
-      }
-    };
-    const handleMasterVolume = (value: number) => {
-      setMixerState((prev) => ({ ...prev, masterVolume: value }));
-      if (audioManagerRef.current) {
-        audioManagerRef.current.setMasterVolume(value);
-      }
-    };
-
-    // Jogwheel controls
-    const handleJogwheelA = (value: number) => {
-      if (deckARef.current && deckARef.current.isPlaying()) {
-        const currentTime = deckARef.current.getCurrentTime();
-        const newTime = currentTime + value * 0.1;
-        deckARef.current.seek(Math.max(0, newTime));
-      }
-    };
-    const handleJogwheelB = (value: number) => {
-      if (deckBRef.current && deckBRef.current.isPlaying()) {
-        const currentTime = deckBRef.current.getCurrentTime();
-        const newTime = currentTime + value * 0.1;
-        deckBRef.current.seek(Math.max(0, newTime));
-      }
-    };
-
-    // Hot Cue handlers (placeholder - can be extended later)
-    const handleHotCue = (deck: 'A' | 'B', cueNumber: number) => {
-      console.log(`🎯 Hot Cue ${cueNumber} pressed on Deck ${deck}`);
-      // TODO: Implement hot cue functionality
-      // This would set/trigger cue points at specific positions
-    };
-
-    // Loop handlers (placeholder - can be extended later)
-    const handleLoop = (deck: 'A' | 'B', loopType: string) => {
-      console.log(`🔁 Loop ${loopType} on Deck ${deck}`);
-      // TODO: Implement loop functionality
-      // This would create/manage loops at current position
-    };
-
-    // Register all handlers
-    // Transport controls
-    midi.on('deckA_play', handleDeckAPlay);
-    midi.on('deckA_pause', handleDeckAPause);
-    midi.on('deckA_stop', handleDeckAStop);
-    midi.on('deckA_cue', handleDeckACue);
-    midi.on('deckB_play', handleDeckBPlay);
-    midi.on('deckB_pause', handleDeckBPause);
-    midi.on('deckB_stop', handleDeckBStop);
-    midi.on('deckB_cue', handleDeckBCue);
-
-    // Volume and EQ
-    midi.on('deckA_volume', handleDeckAVolume);
-    midi.on('deckA_low', handleDeckALow);
-    midi.on('deckA_mid', handleDeckAMid);
-    midi.on('deckA_high', handleDeckAHigh);
-    midi.on('deckB_volume', handleDeckBVolume);
-    midi.on('deckB_low', handleDeckBLow);
-    midi.on('deckB_mid', handleDeckBMid);
-    midi.on('deckB_high', handleDeckBHigh);
+    // Volume / EQ – deck A
+    midi.on('deckA_volume', v => {
+      setMixerState(prev => ({ ...prev, deckA: { ...prev.deckA, volume: v } }));
+      deckARef.current?.setVolume(v);
+    });
+    midi.on('deckA_low', v => setMixerState(prev => {
+      const s = { ...prev, deckA: { ...prev.deckA, eq: { ...prev.deckA.eq, low: v } } };
+      deckARef.current?.setEQ(s.deckA.eq); return s;
+    }));
+    midi.on('deckA_mid', v => setMixerState(prev => {
+      const s = { ...prev, deckA: { ...prev.deckA, eq: { ...prev.deckA.eq, mid: v } } };
+      deckARef.current?.setEQ(s.deckA.eq); return s;
+    }));
+    midi.on('deckA_high', v => setMixerState(prev => {
+      const s = { ...prev, deckA: { ...prev.deckA, eq: { ...prev.deckA.eq, high: v } } };
+      deckARef.current?.setEQ(s.deckA.eq); return s;
+    }));
+    // Volume / EQ – deck B
+    midi.on('deckB_volume', v => {
+      setMixerState(prev => ({ ...prev, deckB: { ...prev.deckB, volume: v } }));
+      deckBRef.current?.setVolume(v);
+    });
+    midi.on('deckB_low', v => setMixerState(prev => {
+      const s = { ...prev, deckB: { ...prev.deckB, eq: { ...prev.deckB.eq, low: v } } };
+      deckBRef.current?.setEQ(s.deckB.eq); return s;
+    }));
+    midi.on('deckB_mid', v => setMixerState(prev => {
+      const s = { ...prev, deckB: { ...prev.deckB, eq: { ...prev.deckB.eq, mid: v } } };
+      deckBRef.current?.setEQ(s.deckB.eq); return s;
+    }));
+    midi.on('deckB_high', v => setMixerState(prev => {
+      const s = { ...prev, deckB: { ...prev.deckB, eq: { ...prev.deckB.eq, high: v } } };
+      deckBRef.current?.setEQ(s.deckB.eq); return s;
+    }));
 
     // Mixer
-    midi.on('crossfader', handleCrossfader);
-    midi.on('masterVolume', handleMasterVolume);
+    midi.on('crossfader', v => {
+      setMixerState(prev => ({ ...prev, crossfader: v }));
+      audioManagerRef.current?.setCrossfader(v);
+    });
+    midi.on('masterVolume', v => {
+      setMixerState(prev => ({ ...prev, masterVolume: v }));
+      audioManagerRef.current?.setMasterVolume(v);
+    });
 
     // Jogwheels
-    midi.on('jogwheelA', handleJogwheelA);
-    midi.on('jogwheelB', handleJogwheelB);
+    midi.on('jogwheelA', v => {
+      if (deckARef.current?.isPlaying()) {
+        deckARef.current.seek(Math.max(0, deckARef.current.getCurrentTime() + v * 0.1));
+      }
+    });
+    midi.on('jogwheelB', v => {
+      if (deckBRef.current?.isPlaying()) {
+        deckBRef.current.seek(Math.max(0, deckBRef.current.getCurrentTime() + v * 0.1));
+      }
+    });
 
-    // Hot Cues
-    midi.on('deckA_hotcue1', () => handleHotCue('A', 1));
-    midi.on('deckA_hotcue2', () => handleHotCue('A', 2));
-    midi.on('deckA_hotcue3', () => handleHotCue('A', 3));
-    midi.on('deckA_hotcue4', () => handleHotCue('A', 4));
-    midi.on('deckB_hotcue1', () => handleHotCue('B', 1));
-    midi.on('deckB_hotcue2', () => handleHotCue('B', 2));
-    midi.on('deckB_hotcue3', () => handleHotCue('B', 3));
-    midi.on('deckB_hotcue4', () => handleHotCue('B', 4));
+    // Hot cues — wired to real handlers via refs (stale-closure-safe)
+    midi.on('deckA_hotcue1', () => handleHotCuePress('A', 0));
+    midi.on('deckA_hotcue2', () => handleHotCuePress('A', 1));
+    midi.on('deckA_hotcue3', () => handleHotCuePress('A', 2));
+    midi.on('deckA_hotcue4', () => handleHotCuePress('A', 3));
+    midi.on('deckB_hotcue1', () => handleHotCuePress('B', 0));
+    midi.on('deckB_hotcue2', () => handleHotCuePress('B', 1));
+    midi.on('deckB_hotcue3', () => handleHotCuePress('B', 2));
+    midi.on('deckB_hotcue4', () => handleHotCuePress('B', 3));
 
-    // Loops
-    midi.on('deckA_loopIn', () => handleLoop('A', 'In'));
-    midi.on('deckA_loopOut', () => handleLoop('A', 'Out'));
-    midi.on('deckA_loopRel', () => handleLoop('A', 'Rel'));
-    midi.on('deckA_loop2x', () => handleLoop('A', '2x'));
-    midi.on('deckA_loop4x', () => handleLoop('A', '4x'));
-    midi.on('deckA_loop8x', () => handleLoop('A', '8x'));
-    midi.on('deckB_loopIn', () => handleLoop('B', 'In'));
-    midi.on('deckB_loopOut', () => handleLoop('B', 'Out'));
-    midi.on('deckB_loopRel', () => handleLoop('B', 'Rel'));
-    midi.on('deckB_loop2x', () => handleLoop('B', '2x'));
-    midi.on('deckB_loop4x', () => handleLoop('B', '4x'));
-    midi.on('deckB_loop8x', () => handleLoop('B', '8x'));
+    // Loop controls — wired to real handlers via refs
+    midi.on('deckA_loopIn', () => handleLoopIn('A'));
+    midi.on('deckA_loopOut', () => handleLoopOut('A'));
+    midi.on('deckA_loopRel', () => handleLoopToggle('A'));
+    midi.on('deckA_loop2x', () => handleLoopDouble('A'));
+    midi.on('deckA_loop4x', () => handleLoopDouble('A'));
+    midi.on('deckA_loop8x', () => handleLoopDouble('A'));
+    midi.on('deckB_loopIn', () => handleLoopIn('B'));
+    midi.on('deckB_loopOut', () => handleLoopOut('B'));
+    midi.on('deckB_loopRel', () => handleLoopToggle('B'));
+    midi.on('deckB_loop2x', () => handleLoopDouble('B'));
+    midi.on('deckB_loop4x', () => handleLoopDouble('B'));
+    midi.on('deckB_loop8x', () => handleLoopDouble('B'));
 
-    // XDJ-RR: tempo fader → pitch rate (sends as jogwheelRateA/B)
-    midi.on('jogwheelRateA', (rate) => handleRateChange('A', rate));
-    midi.on('jogwheelRateB', (rate) => handleRateChange('B', rate));
-
-    // XDJ-RR: hardware SYNC / MASTER buttons
+    // Tempo fader / SYNC / MASTER
+    midi.on('jogwheelRateA', rate => handleRateChange('A', rate));
+    midi.on('jogwheelRateB', rate => handleRateChange('B', rate));
     midi.on('deckA_sync_hw', () => handleSync('A'));
     midi.on('deckB_sync_hw', () => handleSync('B'));
     midi.on('deckA_master_hw', () => handleSetMasterDeck('A'));
     midi.on('deckB_master_hw', () => handleSetMasterDeck('B'));
-
-    console.log('✅ All MIDI handlers registered successfully!');
   };
 
-  // Also try to setup on mount if already initialized
   useEffect(() => {
-    if (
-      midiControllerRef.current &&
-      midiControllerRef.current.getInitialized()
-    ) {
-      setupMIDIHandlers();
-    }
+    if (midiControllerRef.current?.getInitialized()) setupMIDIHandlers();
   }, []);
 
+  // ── Data fetching ──
   useEffect(() => {
     fetchTracks();
     fetchSystemStatus();
-
-    const interval = setInterval(() => {
-      fetchTracks();
-    }, 30000);
-
-    return () => {
-      clearInterval(interval);
-    };
+    const iv = setInterval(fetchTracks, 30000);
+    return () => clearInterval(iv);
   }, []);
 
-  // Start progress tracking when any deck starts playing
+  // ── Progress tracking & loop monitoring ──
   useEffect(() => {
-    const isAnyPlaying =
-      mixerState.deckA.isPlaying || mixerState.deckB.isPlaying;
+    const isAnyPlaying = mixerState.deckA.isPlaying || mixerState.deckB.isPlaying;
     if (isAnyPlaying) {
-      updateProgress();
+      startProgressTracking();
     } else {
-      // Clear interval when nothing is playing
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
         progressInterval.current = null;
       }
     }
-
     return () => {
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
@@ -628,496 +493,234 @@ export default function Home() {
     };
   }, [mixerState.deckA.isPlaying, mixerState.deckB.isPlaying]);
 
-  const fetchTracks = async () => {
-    try {
-      const response = await fetch('/api/tracks');
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Fetched tracks:', data.length, 'tracks');
-        setTracks(data);
-      } else {
-        console.error('Failed to fetch tracks: HTTP', response.status);
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error details:', errorData);
-        setTracks([]);
-      }
-    } catch (error) {
-      console.error('Failed to fetch tracks:', error);
-      setTracks([]);
-    }
-  };
-
-  const fetchSystemStatus = async () => {
-    try {
-      const response = await fetch('/api/status');
-      const data = await response.json();
-      setSystemStatus(data);
-    } catch (error) {
-      console.error('Failed to fetch status:', error);
-    }
-  };
-
-  const updateProgress = () => {
-    if (progressInterval.current) {
-      clearInterval(progressInterval.current);
-    }
+  const startProgressTracking = () => {
+    if (progressInterval.current) clearInterval(progressInterval.current);
 
     progressInterval.current = setInterval(() => {
-      setMixerState((prev) => {
-        let deckAUpdates: Partial<DeckState> | null = null;
-        let deckBUpdates: Partial<DeckState> | null = null;
+      setMixerState(prev => {
+        let aUpdates: Partial<DeckState> | null = null;
+        let bUpdates: Partial<DeckState> | null = null;
+        const now = Date.now();
 
         if (deckARef.current) {
-          const actualCurrentTime = deckARef.current.getCurrentTime();
-
-          if (Math.abs(actualCurrentTime - prev.deckA.currentTime) > 0.05) {
-            deckAUpdates = { ...(deckAUpdates || {}), currentTime: actualCurrentTime };
+          const t = deckARef.current.getCurrentTime();
+          if (Math.abs(t - prev.deckA.currentTime) > 0.05) aUpdates = { currentTime: t };
+          if (now - lastUserActionRef.current > 300) {
+            const playing = deckARef.current.isPlaying();
+            if (playing !== prev.deckA.isPlaying) aUpdates = { ...(aUpdates ?? {}), isPlaying: playing };
           }
-          // Prevent race condition: wait 300ms after user action before enforcing audio engine's play state
-          if (Date.now() - lastUserActionRef.current > 300) {
-            const actualPlaying = deckARef.current.isPlaying();
-            if (actualPlaying !== prev.deckA.isPlaying) {
-              deckAUpdates = { ...(deckAUpdates || {}), isPlaying: actualPlaying };
-            }
-          }
-          // Auto-stop at end of track
-          if (prev.deckA.track && actualCurrentTime >= prev.deckA.track.duration - 0.1 && prev.deckA.isPlaying) {
-            deckAUpdates = { ...(deckAUpdates || {}), isPlaying: false, currentTime: 0 };
+          if (prev.deckA.track && t >= prev.deckA.track.duration - 0.1 && prev.deckA.isPlaying) {
+            aUpdates = { ...(aUpdates ?? {}), isPlaying: false, currentTime: 0 };
             deckARef.current.stop();
           }
+          // Loop monitoring
+          const la = loopARef.current;
+          if (la.active && la.start !== null && la.end !== null && t >= la.end) {
+            deckARef.current.seek(la.start);
+          }
         }
-        if (deckBRef.current) {
-          const actualCurrentTime = deckBRef.current.getCurrentTime();
 
-          if (Math.abs(actualCurrentTime - prev.deckB.currentTime) > 0.05) {
-            deckBUpdates = { ...(deckBUpdates || {}), currentTime: actualCurrentTime };
+        if (deckBRef.current) {
+          const t = deckBRef.current.getCurrentTime();
+          if (Math.abs(t - prev.deckB.currentTime) > 0.05) bUpdates = { currentTime: t };
+          if (now - lastUserActionRef.current > 300) {
+            const playing = deckBRef.current.isPlaying();
+            if (playing !== prev.deckB.isPlaying) bUpdates = { ...(bUpdates ?? {}), isPlaying: playing };
           }
-          if (Date.now() - lastUserActionRef.current > 300) {
-            const actualPlaying = deckBRef.current.isPlaying();
-            if (actualPlaying !== prev.deckB.isPlaying) {
-              deckBUpdates = { ...(deckBUpdates || {}), isPlaying: actualPlaying };
-            }
-          }
-          if (prev.deckB.track && actualCurrentTime >= prev.deckB.track.duration - 0.1 && prev.deckB.isPlaying) {
-            deckBUpdates = { ...(deckBUpdates || {}), isPlaying: false, currentTime: 0 };
+          if (prev.deckB.track && t >= prev.deckB.track.duration - 0.1 && prev.deckB.isPlaying) {
+            bUpdates = { ...(bUpdates ?? {}), isPlaying: false, currentTime: 0 };
             deckBRef.current.stop();
           }
+          // Loop monitoring
+          const lb = loopBRef.current;
+          if (lb.active && lb.start !== null && lb.end !== null && t >= lb.end) {
+            deckBRef.current.seek(lb.start);
+          }
         }
 
-        if (!deckAUpdates && !deckBUpdates) return prev;
-
+        if (!aUpdates && !bUpdates) return prev;
         return {
           ...prev,
-          deckA: deckAUpdates ? { ...prev.deckA, ...deckAUpdates } : prev.deckA,
-          deckB: deckBUpdates ? { ...prev.deckB, ...deckBUpdates } : prev.deckB,
+          deckA: aUpdates ? { ...prev.deckA, ...aUpdates } : prev.deckA,
+          deckB: bUpdates ? { ...prev.deckB, ...bUpdates } : prev.deckB,
         };
       });
     }, 50);
   };
 
+  // ── Apply audio changes ──
+  useEffect(() => {
+    deckARef.current?.setVolume(mixerState.deckA.volume);
+    deckBRef.current?.setVolume(mixerState.deckB.volume);
+  }, [mixerState.deckA.volume, mixerState.deckB.volume]);
+
+  useEffect(() => {
+    deckARef.current?.setEQ(mixerState.deckA.eq);
+    deckBRef.current?.setEQ(mixerState.deckB.eq);
+  }, [mixerState.deckA.eq, mixerState.deckB.eq]);
+
+  useEffect(() => {
+    audioManagerRef.current?.setCrossfader(mixerState.crossfader);
+  }, [mixerState.crossfader]);
+
+  useEffect(() => {
+    audioManagerRef.current?.setMasterVolume(mixerState.masterVolume);
+  }, [mixerState.masterVolume]);
+
+  // ── Track loading ──
   const loadTrack = async (track: Track, deck: 'A' | 'B') => {
     const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
-    if (!deckRef) {
-      console.error(`Deck ${deck} not initialized`);
-      alert(`Deck ${deck} is not ready. Please refresh the page.`);
-      return;
-    }
+    if (!deckRef) { alert(`Deck ${deck} is not ready. Please refresh.`); return; }
 
     try {
-      console.log(`Loading track "${track.title}" into Deck ${deck}...`);
+      if (deckRef.isPlaying()) deckRef.stop();
+      deckRef.off('end'); deckRef.off('play'); deckRef.off('pause'); deckRef.off('stop');
 
-      // Stop current playback before loading new track
-      if (deckRef.isPlaying()) {
-        deckRef.stop();
+      setMixerState(prev => ({
+        ...prev,
+        [deckKey]: { ...prev[deckKey], track, currentTime: 0, isPlaying: false, rate: 1.0 },
+      }));
+
+      // Reset loops and hot cues for this deck
+      if (deck === 'A') {
+        setLoopA(INITIAL_LOOP);
+        setHotCuesA([null, null, null, null]);
+      } else {
+        setLoopB(INITIAL_LOOP);
+        setHotCuesB([null, null, null, null]);
       }
 
-      // Clear previous event handlers to prevent leaks
-      deckRef.off('end');
-      deckRef.off('play');
-      deckRef.off('pause');
-      deckRef.off('stop');
+      await deckRef.load(track.audioUrl ?? `/api/audio/${track.id}`);
 
-      // Update state immediately to show loading
-      setMixerState((prev) => ({
-        ...prev,
-        [deckKey]: {
-          ...prev[deckKey],
-          track,
-          currentTime: 0,
-          isPlaying: false,
-          rate: 1.0, // Reset rate on new track
-        },
-      }));
+      deckRef.on('play', () => setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], isPlaying: true } })));
+      deckRef.on('pause', () => setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], isPlaying: false } })));
+      deckRef.on('stop', () => setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], isPlaying: false, currentTime: 0 } })));
+      deckRef.on('end', () => setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], isPlaying: false, currentTime: 0 } })));
 
-      const audioUrl = `/api/audio/${track.id}`;
-      await deckRef.load(audioUrl);
-
-      // Set up event handlers for track lifecycle
-      deckRef.on('play', () => {
-        setMixerState((prev) => ({
-          ...prev,
-          [deckKey]: { ...prev[deckKey], isPlaying: true }
-        }));
+      setMixerState(prev => {
+        const ds = prev[deckKey];
+        deckRef.setVolume(ds.volume);
+        deckRef.setEQ(ds.eq);
+        return prev;
       });
-      deckRef.on('pause', () => {
-        setMixerState((prev) => ({
-          ...prev,
-          [deckKey]: { ...prev[deckKey], isPlaying: false }
-        }));
-      });
-      deckRef.on('stop', () => {
-        setMixerState((prev) => ({
-          ...prev,
-          [deckKey]: { ...prev[deckKey], isPlaying: false, currentTime: 0 }
-        }));
-      });
-      deckRef.on('end', () => {
-        setMixerState((prev) => ({
-          ...prev,
-          [deckKey]: {
-            ...prev[deckKey],
-            isPlaying: false,
-            currentTime: 0,
-          },
-        }));
-      });
-
-      // Apply current volume and EQ using functional updater to read fresh state
-      setMixerState((prev) => {
-        const currentDeckState = prev[deckKey];
-        deckRef.setVolume(currentDeckState.volume);
-        deckRef.setEQ(currentDeckState.eq);
-        return prev; // No state change, just read
-      });
-
-      console.log(
-        `✅ Track "${track.title}" loaded successfully into Deck ${deck}`
-      );
     } catch (error: any) {
-      console.error(`❌ Failed to load track on deck ${deck}:`, error);
-      const errorMessage = error?.message || 'Unknown error';
-      alert(
-        `Failed to load track "${track.title}": ${errorMessage}\n\nMake sure the track has been analyzed and the audio file exists.`
-      );
-
-      // Clear the track from state on error
-      setMixerState((prev) => ({
-        ...prev,
-        [deckKey]: {
-          ...prev[deckKey],
-          track: null,
-          isPlaying: false,
-          currentTime: 0,
-        },
-      }));
+      alert(`Failed to load "${track.title}": ${error?.message ?? 'Unknown error'}`);
+      setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], track: null, isPlaying: false, currentTime: 0 } }));
     }
   };
 
   const handleEject = (deck: 'A' | 'B') => {
     const deckKey = deck === 'A' ? 'deckA' : 'deckB';
     const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
-    if (deckRef) {
-      // Clear event handlers before disposing
-      deckRef.off('end');
-      deckRef.stop();
-      deckRef.dispose();
+    if (!deckRef) return;
+    deckRef.off('end');
+    deckRef.stop();
+    deckRef.dispose();
 
-      // Recreate the deck audio instance
-      const newDeck = audioManagerRef.current?.createDeck(deck) || null;
-      if (deck === 'A') {
-        deckARef.current = newDeck;
-      } else {
-        deckBRef.current = newDeck;
-      }
+    const newDeck = audioManagerRef.current?.createDeck(deck) ?? null;
+    if (deck === 'A') deckARef.current = newDeck;
+    else deckBRef.current = newDeck;
 
-      // Preserve volume and EQ, clear track
-      setMixerState((prev) => {
-        const prevDeck = prev[deckKey];
-        // Apply preserved settings to new deck instance
-        if (newDeck) {
-          newDeck.setVolume(prevDeck.volume);
-          newDeck.setEQ(prevDeck.eq);
-        }
-        return {
-          ...prev,
-          [deckKey]: {
-            track: null,
-            isPlaying: false,
-            currentTime: 0,
-            volume: prevDeck.volume,
-            eq: { ...prevDeck.eq },
-            rate: 1.0,
-          },
-        };
-      });
-    }
+    if (deck === 'A') { setLoopA(INITIAL_LOOP); setHotCuesA([null, null, null, null]); }
+    else { setLoopB(INITIAL_LOOP); setHotCuesB([null, null, null, null]); }
+
+    setMixerState(prev => {
+      const pd = prev[deckKey];
+      newDeck?.setVolume(pd.volume);
+      newDeck?.setEQ(pd.eq);
+      return { ...prev, [deckKey]: { track: null, isPlaying: false, currentTime: 0, volume: pd.volume, eq: { ...pd.eq }, rate: 1.0 } };
+    });
   };
 
-  const handleSeek = (deck: 'A' | 'B', time: number) => {
-    const deckRef = deck === 'A' ? deckARef.current : deckBRef.current;
-    if (deckRef) {
-      deckRef.seek(time);
-      setMixerState((prev) => ({
-        ...prev,
-        [deck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[deck === 'A' ? 'deckA' : 'deckB'],
-          currentTime: time,
-        },
-      }));
-    }
-  };
-
-  // Apply volume changes
-  useEffect(() => {
-    if (deckARef.current) {
-      deckARef.current.setVolume(mixerState.deckA.volume);
-    }
-    if (deckBRef.current) {
-      deckBRef.current.setVolume(mixerState.deckB.volume);
-    }
-  }, [mixerState.deckA.volume, mixerState.deckB.volume]);
-
-  // Apply EQ changes
-  useEffect(() => {
-    if (deckARef.current) {
-      deckARef.current.setEQ(mixerState.deckA.eq);
-    }
-    if (deckBRef.current) {
-      deckBRef.current.setEQ(mixerState.deckB.eq);
-    }
-  }, [mixerState.deckA.eq, mixerState.deckB.eq]);
-
-  // Apply crossfader
-  useEffect(() => {
-    if (audioManagerRef.current) {
-      audioManagerRef.current.setCrossfader(mixerState.crossfader);
-    }
-  }, [mixerState.crossfader]);
-
-  // Apply master volume
-  useEffect(() => {
-    if (audioManagerRef.current) {
-      audioManagerRef.current.setMasterVolume(mixerState.masterVolume);
-    }
-  }, [mixerState.masterVolume]);
-
-  // Live mode handlers
-  const handleAddSegment = (segment: SegmentSuggestion) => {
-    if (playlistManagerRef.current) {
-      playlistManagerRef.current.addSegment(segment);
-    }
-  };
-
-  const handlePreviewSegment = async (segment: SegmentSuggestion) => {
+  // ── Fetch helpers ──
+  const fetchTracks = async () => {
     try {
-      const trackInfo = getCurrentTrackForSuggestions();
-      // If a track is actively playing, perform a full crossfade transition preview!
-      if (trackInfo.trackId && trackInfo.isPlaying) {
-        await previewTransition(
-          trackInfo.trackId, 
-          segment.trackId, 
-          trackInfo.position, 
-          segment.position
-        );
-      } else {
-        // Otherwise, just preview the single segment
-        await previewSegment(segment);
-      }
-    } catch (error) {
-      console.error("Preview failed:", error);
-    }
+      const r = await fetch('/api/tracks');
+      if (r.ok) setTracks(await r.json());
+      else setTracks([]);
+    } catch { setTracks([]); }
   };
 
-  // Handle playing a segment from playlist builder
-  const handlePlaySegment = async (segment: PlaylistSegment) => {
-    // Find an empty deck or the one that's not playing
-    let targetDeck: 'A' | 'B' = 'A';
-    if (mixerState.deckA.track && mixerState.deckA.isPlaying) {
-      targetDeck = 'B';
-    } else if (mixerState.deckB.track && mixerState.deckB.isPlaying) {
-      targetDeck = 'A';
-    } else if (!mixerState.deckA.track) {
-      targetDeck = 'A';
-    } else if (!mixerState.deckB.track) {
-      targetDeck = 'B';
-    }
-
-    const deckRef = targetDeck === 'A' ? deckARef.current : deckBRef.current;
-    if (!deckRef) {
-      console.error(`Deck ${targetDeck} not initialized`);
-      alert(`Deck ${targetDeck} is not ready. Please refresh the page.`);
-      return;
-    }
-
+  const fetchSystemStatus = async () => {
     try {
-      // Find the track object
-      const track = tracks.find((t) => t.id === segment.trackId);
-      if (!track) {
-        alert(`Track not found: ${segment.trackId}`);
-        return;
-      }
-
-      // Stop the deck first if it's playing
-      if (deckRef.isPlaying()) {
-        deckRef.stop();
-      }
-
-      // Update state to show loading
-      setMixerState((prev) => ({
-        ...prev,
-        [targetDeck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[targetDeck === 'A' ? 'deckA' : 'deckB'],
-          track,
-          currentTime: segment.startTime,
-          isPlaying: false,
-        },
-      }));
-
-      // Load the track
-      const audioUrl = `/api/audio/${track.id}`;
-      await deckRef.load(audioUrl);
-
-      // Seek to segment start time
-      deckRef.seek(segment.startTime);
-
-      // Apply current settings
-      const deckState =
-        targetDeck === 'A' ? mixerState.deckA : mixerState.deckB;
-      deckRef.setVolume(deckState.volume);
-      deckRef.setEQ(deckState.eq);
-
-      // Set up end handler to stop at segment end
-      const handleSegmentEnd = () => {
-        if (deckRef) {
-          deckRef.pause();
-          deckRef.seek(segment.endTime);
-          setMixerState((prev) => ({
-            ...prev,
-            [targetDeck === 'A' ? 'deckA' : 'deckB']: {
-              ...prev[targetDeck === 'A' ? 'deckA' : 'deckB'],
-              isPlaying: false,
-              currentTime: segment.endTime,
-            },
-          }));
-          deckRef.off('end', handleSegmentEnd);
-        }
-      };
-
-      deckRef.on('end', handleSegmentEnd);
-
-      // Play the segment
-      deckRef.play();
-
-      // Update state to show playing
-      setMixerState((prev) => ({
-        ...prev,
-        [targetDeck === 'A' ? 'deckA' : 'deckB']: {
-          ...prev[targetDeck === 'A' ? 'deckA' : 'deckB'],
-          isPlaying: true,
-        },
-      }));
-
-      // Monitor playback to stop at segment end (backup in case 'end' event doesn't fire)
-      const segmentEndMonitor = setInterval(() => {
-        if (deckRef) {
-          const currentTime = deckRef.getCurrentTime();
-          if (currentTime >= segment.endTime) {
-            deckRef.pause();
-            deckRef.seek(segment.endTime);
-            clearInterval(segmentEndMonitor);
-            setMixerState((prev) => ({
-              ...prev,
-              [targetDeck === 'A' ? 'deckA' : 'deckB']: {
-                ...prev[targetDeck === 'A' ? 'deckA' : 'deckB'],
-                isPlaying: false,
-                currentTime: segment.endTime,
-              },
-            }));
-            deckRef.off('end', handleSegmentEnd);
-          }
-        }
-      }, 100);
-
-      // Clean up monitor after segment duration
-      const segmentDuration = (segment.endTime - segment.startTime) * 1000;
-      setTimeout(() => {
-        clearInterval(segmentEndMonitor);
-        deckRef.off('end', handleSegmentEnd);
-      }, segmentDuration + 1000);
-    } catch (error: any) {
-      console.error(`Failed to play segment on deck ${targetDeck}:`, error);
-      alert(
-        `Failed to play segment: ${
-          error?.message || 'Unknown error'
-        }\n\nMake sure the track has been analyzed and the audio file exists.`
-      );
-    }
+      const r = await fetch('/api/status');
+      setSystemStatus(await r.json());
+    } catch {}
   };
 
-  const handlePlayPlaylist = async (playlist: Playlist) => {
-    if (!audioManagerRef.current || !playlistManagerRef.current) return;
+  // ── Live mode helpers ──
+  const handleAddSegment = (seg: SegmentSuggestion) => playlistManagerRef.current?.addSegment(seg);
 
-    // Stop any current playback
-    if (deckARef.current) deckARef.current.stop();
-    if (deckBRef.current) deckBRef.current.stop();
-
-    // Create auto-transition manager
-    if (autoTransitionRef.current) {
-      autoTransitionRef.current.stop();
-    }
-
-    autoTransitionRef.current = new AutoTransitionManager(
-      playlistManagerRef.current,
-      audioManagerRef.current
-    );
-
-    try {
-      await autoTransitionRef.current.startPlaylist(playlist);
-      setLiveMode('live');
-    } catch (error) {
-      console.error('Failed to start playlist:', error);
-      alert('Failed to start playlist: ' + (error as Error).message);
-    }
-  };
-
-  // Get currently playing track for segment suggestions
-  const getCurrentTrackForSuggestions = (): {
-    trackId: string | null;
-    position: number;
-    isPlaying: boolean;
-  } => {
-    if (mixerState.deckA.isPlaying && mixerState.deckA.track) {
-      return {
-        trackId: mixerState.deckA.track.id,
-        position: mixerState.deckA.currentTime,
-        isPlaying: true,
-      };
-    }
-    if (mixerState.deckB.isPlaying && mixerState.deckB.track) {
-      return {
-        trackId: mixerState.deckB.track.id,
-        position: mixerState.deckB.currentTime,
-        isPlaying: true,
-      };
-    }
+  const getCurrentTrackInfo = () => {
+    if (mixerState.deckA.isPlaying && mixerState.deckA.track)
+      return { trackId: mixerState.deckA.track.id, position: mixerState.deckA.currentTime, isPlaying: true };
+    if (mixerState.deckB.isPlaying && mixerState.deckB.track)
+      return { trackId: mixerState.deckB.track.id, position: mixerState.deckB.currentTime, isPlaying: true };
     return {
-      trackId: mixerState.deckA.track?.id || mixerState.deckB.track?.id || null,
-      position:
-        mixerState.deckA.currentTime || mixerState.deckB.currentTime || 0,
+      trackId: mixerState.deckA.track?.id ?? mixerState.deckB.track?.id ?? null,
+      position: mixerState.deckA.currentTime || mixerState.deckB.currentTime || 0,
       isPlaying: false,
     };
   };
 
-  const currentTrackInfo = getCurrentTrackForSuggestions();
+  const handlePreviewSegment = async (seg: SegmentSuggestion) => {
+    const info = getCurrentTrackInfo();
+    if (info.trackId && info.isPlaying) {
+      await previewTransition(info.trackId, seg.trackId, info.position, seg.position).catch(console.error);
+    } else {
+      await previewSegment(seg).catch(console.error);
+    }
+  };
 
-  if (!isMounted) {
-    return (
-      <div className='h-screen bg-background flex items-center justify-center'>
-        <div className='text-foreground'>Loading DJ Platform...</div>
-      </div>
-    );
-  }
+  const handlePlaySegment = async (seg: PlaylistSegment) => {
+    let target: 'A' | 'B' = 'A';
+    if (mixerState.deckA.isPlaying) target = 'B';
+    else if (mixerState.deckB.isPlaying) target = 'A';
+    else if (!mixerState.deckA.track) target = 'A';
+    else if (!mixerState.deckB.track) target = 'B';
+
+    const deckRef = target === 'A' ? deckARef.current : deckBRef.current;
+    if (!deckRef) return;
+
+    const track = tracks.find(t => t.id === seg.trackId);
+    if (!track) { alert(`Track not found: ${seg.trackId}`); return; }
+
+    try {
+      if (deckRef.isPlaying()) deckRef.stop();
+      const deckKey = target === 'A' ? 'deckA' : 'deckB';
+      setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], track, currentTime: seg.startTime, isPlaying: false } }));
+      await deckRef.load(track.audioUrl ?? `/api/audio/${track.id}`);
+      const ds = target === 'A' ? mixerState.deckA : mixerState.deckB;
+      deckRef.setVolume(ds.volume);
+      deckRef.setEQ(ds.eq);
+      deckRef.play(seg.startTime);
+      setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], isPlaying: true } }));
+
+      const monitor = setInterval(() => {
+        if (deckRef.getCurrentTime() >= seg.endTime) {
+          deckRef.pause();
+          clearInterval(monitor);
+          setMixerState(prev => ({ ...prev, [deckKey]: { ...prev[deckKey], isPlaying: false, currentTime: seg.endTime } }));
+        }
+      }, 100);
+      setTimeout(() => clearInterval(monitor), (seg.endTime - seg.startTime) * 1000 + 1000);
+    } catch (err: any) {
+      alert(`Failed to play segment: ${err?.message ?? 'Unknown error'}`);
+    }
+  };
+
+  const handlePlayPlaylist = async (pl: Playlist) => {
+    if (!audioManagerRef.current || !playlistManagerRef.current) return;
+    deckARef.current?.stop();
+    deckBRef.current?.stop();
+    autoTransitionRef.current?.stop();
+    autoTransitionRef.current = new AutoTransitionManager(playlistManagerRef.current, audioManagerRef.current);
+    try {
+      await autoTransitionRef.current.startPlaylist(pl);
+      setLiveMode('live');
+    } catch (err) { alert('Failed to start playlist: ' + (err as Error).message); }
+  };
 
   const getActiveKey = () => {
     if (mixerState.deckA.isPlaying && mixerState.deckA.track) return mixerState.deckA.track.key;
@@ -1127,224 +730,204 @@ export default function Home() {
     return undefined;
   };
 
+  const currentTrackInfo = getCurrentTrackInfo();
+
+  if (!isMounted) {
+    return (
+      <div className='h-screen bg-background flex items-center justify-center'>
+        <div className='text-foreground/60 text-sm tracking-widest uppercase'>Loading…</div>
+      </div>
+    );
+  }
+
   return (
     <div className='h-screen bg-background flex flex-col overflow-hidden'>
       <Navigation />
       <StatusBar status={systemStatus} onRetry={fetchSystemStatus} />
 
-      {/* Live Mode Toggle */}
-      <div className='border-b border-white/5 bg-background/50 backdrop-blur-md px-4 py-2'>
-        <div className='flex items-center justify-between'>
-          <div className='flex items-center gap-4'>
-            <Label className='text-sm font-semibold'>Mode:</Label>
-            <RadioGroup
-              value={liveMode}
-              onValueChange={(value) => setLiveMode(value as 'manual' | 'live')}
-              className='flex gap-4'
+      {/* Compact mode + live controls bar */}
+      <div className='flex-shrink-0 border-b border-white/[0.04] bg-background/40 px-3 py-1 flex items-center gap-3'>
+        <div className='flex rounded border border-white/[0.06] overflow-hidden'>
+          {(['manual', 'live'] as const).map(m => (
+            <button
+              key={m}
+              onClick={() => setLiveMode(m)}
+              className={cn(
+                'px-3 py-0.5 text-[9px] font-black tracking-widest uppercase transition-colors',
+                liveMode === m
+                  ? m === 'live'
+                    ? 'bg-deck-b/15 text-deck-b'
+                    : 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground/50 hover:text-foreground',
+              )}
             >
-              <div className='flex items-center gap-2'>
-                <RadioGroupItem value='manual' id='manual' />
-                <Label htmlFor='manual' className='text-sm cursor-pointer'>
-                  Manual
-                </Label>
-              </div>
-              <div className='flex items-center gap-2'>
-                <RadioGroupItem value='live' id='live' />
-                <Label htmlFor='live' className='text-sm cursor-pointer'>
-                  Live Playlist
-                </Label>
-              </div>
-            </RadioGroup>
-          </div>
-          {liveMode === 'live' && playlistManagerRef.current && (
-            <div className='text-xs text-muted-foreground'>
-              {playlistManagerRef.current.getPlaylist().segments.length}{' '}
-              segments in playlist
-            </div>
-          )}
+              {m === 'live' ? '▶ Live Playlist' : 'Manual'}
+            </button>
+          ))}
         </div>
+        {liveMode === 'live' && playlistManagerRef.current && (
+          <span className='text-[9px] text-muted-foreground/50'>
+            {playlistManagerRef.current.getPlaylist().segments.length} segments queued
+          </span>
+        )}
       </div>
 
       <div className='flex-1 overflow-hidden min-h-0 flex flex-col'>
         <PanelGroup direction='vertical' className='flex-1'>
+          {/* Top: Decks + Mixer */}
           <Panel defaultSize={65} minSize={40} className='min-h-0 p-2 pb-0'>
-          <div className='h-full'>
-            <PanelGroup direction='horizontal' className='h-full'>
-              {/* Segment Suggestions (Live Mode) */}
-              {liveMode === 'live' && (
-                <>
-                  <Panel
-                    defaultSize={20}
-                    minSize={15}
-                    className='min-w-0 overflow-hidden'
-                  >
-                    <SegmentSuggestions
-                      currentTrackId={currentTrackInfo.trackId}
-                      currentPosition={currentTrackInfo.position}
-                      isPlaying={currentTrackInfo.isPlaying}
-                      onAddSegment={handleAddSegment}
-                      onPreviewSegment={handlePreviewSegment}
-                      playlistSegmentIds={
-                        playlistManagerRef.current
-                          ? playlistManagerRef.current
-                              .getPlaylist()
-                              .segments.map(
-                                (s) => `${s.trackId}_${s.startTime}`
-                              )
-                          : []
-                      }
-                    />
-                  </Panel>
-                  <PanelResizeHandle className='w-1.5 bg-white/5 mx-1 rounded-full hover:bg-primary/20 transition-colors cursor-col-resize' />
-                </>
-              )}
+            <div className='h-full'>
+              <PanelGroup direction='horizontal' className='h-full'>
+                {/* Live mode: Segment suggestions panel */}
+                {liveMode === 'live' && (
+                  <>
+                    <Panel defaultSize={18} minSize={14} className='min-w-0 overflow-hidden'>
+                      <SegmentSuggestions
+                        currentTrackId={currentTrackInfo.trackId}
+                        currentPosition={currentTrackInfo.position}
+                        isPlaying={currentTrackInfo.isPlaying}
+                        onAddSegment={handleAddSegment}
+                        onPreviewSegment={handlePreviewSegment}
+                        playlistSegmentIds={
+                          playlistManagerRef.current
+                            ? playlistManagerRef.current.getPlaylist().segments.map(s => `${s.trackId}_${s.startTime}`)
+                            : []
+                        }
+                      />
+                    </Panel>
+                    <PanelResizeHandle className='w-1.5 bg-white/[0.03] mx-0.5 rounded-full hover:bg-primary/20 transition-colors cursor-col-resize' />
+                  </>
+                )}
 
-              <Panel
-                defaultSize={liveMode === 'live' ? 20 : 33.33}
-                minSize={15}
-                className='min-w-0 overflow-hidden'
-                style={{ display: 'flex', flexDirection: 'column' }}
-              >
-                <Deck
-                  deck={mixerState.deckA}
-                  deckName='A'
-                  isMaster={mixerState.masterDeck === 'A'}
-                  onPlay={() => handlePlay('A')}
-                  onPause={() => handlePause('A')}
-                  onStop={() => handleStop('A')}
-                  onCue={() => handleCue('A')}
-                  onLoadTrack={() => {}}
-                  onEject={() => handleEject('A')}
-                  onSeek={(time) => handleSeek('A', time)}
-                  onSetMaster={() => handleSetMasterDeck('A')}
-                  onSync={() => handleSync('A')}
-                  onRateChange={(rate) => handleRateChange('A', rate)}
-                />
-              </Panel>
-              <PanelResizeHandle className='w-1.5 bg-border hover:bg-primary/20 transition-colors cursor-col-resize' />
-              <Panel
-                defaultSize={liveMode === 'live' ? 20 : 33.33}
-                minSize={15}
-                className='min-w-0 overflow-hidden'
-                style={{ display: 'flex', flexDirection: 'column' }}
-              >
-                <CentralMixer
-                  deckA={mixerState.deckA}
-                  deckB={mixerState.deckB}
-                  masterVolume={mixerState.masterVolume}
-                  crossfader={mixerState.crossfader}
-                  onDeckAVolumeChange={(volume) =>
-                    setMixerState((prev) => ({
-                      ...prev,
-                      deckA: { ...prev.deckA, volume },
-                    }))
-                  }
-                  onDeckBVolumeChange={(volume) =>
-                    setMixerState((prev) => ({
-                      ...prev,
-                      deckB: { ...prev.deckB, volume },
-                    }))
-                  }
-                  onMasterVolumeChange={(volume) =>
-                    setMixerState((prev) => ({ ...prev, masterVolume: volume }))
-                  }
-                  onCrossfaderChange={(value) =>
-                    setMixerState((prev) => ({ ...prev, crossfader: value }))
-                  }
-                  onDeckAEQChange={(band, value) =>
-                    setMixerState((prev) => ({
-                      ...prev,
-                      deckA: {
-                        ...prev.deckA,
-                        eq: { ...prev.deckA.eq, [band]: value },
-                      },
-                    }))
-                  }
-                  onDeckBEQChange={(band, value) =>
-                    setMixerState((prev) => ({
-                      ...prev,
-                      deckB: {
-                        ...prev.deckB,
-                        eq: { ...prev.deckB.eq, [band]: value },
-                      },
-                    }))
-                  }
-                  onAutoTransition={handleAutoTransition}
-                />
-              </Panel>
-              <PanelResizeHandle className='w-1.5 bg-border hover:bg-primary/20 transition-colors cursor-col-resize' />
-              <Panel
-                defaultSize={liveMode === 'live' ? 20 : 33.33}
-                minSize={15}
-                className='min-w-0 overflow-hidden'
-                style={{ display: 'flex', flexDirection: 'column' }}
-              >
-                <Deck
-                  deck={mixerState.deckB}
-                  deckName='B'
-                  isMaster={mixerState.masterDeck === 'B'}
-                  onPlay={() => handlePlay('B')}
-                  onPause={() => handlePause('B')}
-                  onStop={() => handleStop('B')}
-                  onCue={() => handleCue('B')}
-                  onLoadTrack={() => {}}
-                  onEject={() => handleEject('B')}
-                  onSeek={(time) => handleSeek('B', time)}
-                  onSetMaster={() => handleSetMasterDeck('B')}
-                  onSync={() => handleSync('B')}
-                  onRateChange={(rate) => handleRateChange('B', rate)}
-                />
-              </Panel>
+                {/* Deck A */}
+                <Panel defaultSize={liveMode === 'live' ? 20 : 33} minSize={20} className='min-w-0 overflow-hidden flex flex-col'>
+                  <Deck
+                    deck={mixerState.deckA}
+                    deckName='A'
+                    isMaster={mixerState.masterDeck === 'A'}
+                    hotCues={hotCuesA}
+                    loop={loopA}
+                    onPlay={() => handlePlay('A')}
+                    onPause={() => handlePause('A')}
+                    onStop={() => handleStop('A')}
+                    onCue={() => handleCue('A')}
+                    onLoadTrack={() => {}}
+                    onEject={() => handleEject('A')}
+                    onSeek={t => handleSeek('A', t)}
+                    onSetMaster={() => handleSetMasterDeck('A')}
+                    onSync={() => handleSync('A')}
+                    onRateChange={r => handleRateChange('A', r)}
+                    onHotCuePress={i => handleHotCuePress('A', i)}
+                    onHotCueClear={i => handleHotCueClear('A', i)}
+                    onLoopIn={() => handleLoopIn('A')}
+                    onLoopOut={() => handleLoopOut('A')}
+                    onLoopToggle={() => handleLoopToggle('A')}
+                    onLoopHalve={() => handleLoopHalve('A')}
+                    onLoopDouble={() => handleLoopDouble('A')}
+                  />
+                </Panel>
 
-              {/* Playlist Builder (Live Mode) */}
-              {liveMode === 'live' && playlistManagerRef.current && (
-                <>
-                  <PanelResizeHandle className='w-1.5 bg-white/5 mx-1 rounded-full hover:bg-primary/20 transition-colors cursor-col-resize' />
-                  <Panel
-                    defaultSize={20}
-                    minSize={15}
-                    className='min-w-0 overflow-hidden'
-                  >
-                    <PlaylistBuilder
-                      playlistManager={playlistManagerRef.current}
-                      onPlayPlaylist={handlePlayPlaylist}
-                      onSegmentSelect={handlePlaySegment}
-                    />
-                  </Panel>
-                </>
-              )}
-            </PanelGroup>
-          </div>
+                <PanelResizeHandle className='w-1.5 bg-border hover:bg-primary/20 transition-colors cursor-col-resize' />
+
+                {/* Central Mixer */}
+                <Panel defaultSize={liveMode === 'live' ? 20 : 34} minSize={18} className='min-w-0 overflow-hidden flex flex-col'>
+                  <CentralMixer
+                    deckA={mixerState.deckA}
+                    deckB={mixerState.deckB}
+                    masterVolume={mixerState.masterVolume}
+                    crossfader={mixerState.crossfader}
+                    onDeckAVolumeChange={v => {
+                      deckARef.current?.setVolume(v);
+                      setMixerState(prev => ({ ...prev, deckA: { ...prev.deckA, volume: v } }));
+                    }}
+                    onDeckBVolumeChange={v => {
+                      deckBRef.current?.setVolume(v);
+                      setMixerState(prev => ({ ...prev, deckB: { ...prev.deckB, volume: v } }));
+                    }}
+                    onMasterVolumeChange={v => {
+                      audioManagerRef.current?.setMasterVolume(v);
+                      setMixerState(prev => ({ ...prev, masterVolume: v }));
+                    }}
+                    onCrossfaderChange={v => {
+                      audioManagerRef.current?.setCrossfader(v);
+                      setMixerState(prev => ({ ...prev, crossfader: v }));
+                    }}
+                    onDeckAEQChange={(band, v) => setMixerState(prev => ({ ...prev, deckA: { ...prev.deckA, eq: { ...prev.deckA.eq, [band]: v } } }))}
+                    onDeckBEQChange={(band, v) => setMixerState(prev => ({ ...prev, deckB: { ...prev.deckB, eq: { ...prev.deckB.eq, [band]: v } } }))}
+                    onAutoTransition={handleAutoTransition}
+                  />
+                </Panel>
+
+                <PanelResizeHandle className='w-1.5 bg-border hover:bg-primary/20 transition-colors cursor-col-resize' />
+
+                {/* Deck B */}
+                <Panel defaultSize={liveMode === 'live' ? 20 : 33} minSize={20} className='min-w-0 overflow-hidden flex flex-col'>
+                  <Deck
+                    deck={mixerState.deckB}
+                    deckName='B'
+                    isMaster={mixerState.masterDeck === 'B'}
+                    hotCues={hotCuesB}
+                    loop={loopB}
+                    onPlay={() => handlePlay('B')}
+                    onPause={() => handlePause('B')}
+                    onStop={() => handleStop('B')}
+                    onCue={() => handleCue('B')}
+                    onLoadTrack={() => {}}
+                    onEject={() => handleEject('B')}
+                    onSeek={t => handleSeek('B', t)}
+                    onSetMaster={() => handleSetMasterDeck('B')}
+                    onSync={() => handleSync('B')}
+                    onRateChange={r => handleRateChange('B', r)}
+                    onHotCuePress={i => handleHotCuePress('B', i)}
+                    onHotCueClear={i => handleHotCueClear('B', i)}
+                    onLoopIn={() => handleLoopIn('B')}
+                    onLoopOut={() => handleLoopOut('B')}
+                    onLoopToggle={() => handleLoopToggle('B')}
+                    onLoopHalve={() => handleLoopHalve('B')}
+                    onLoopDouble={() => handleLoopDouble('B')}
+                  />
+                </Panel>
+
+                {/* Live mode: Playlist builder panel */}
+                {liveMode === 'live' && playlistManagerRef.current && (
+                  <>
+                    <PanelResizeHandle className='w-1.5 bg-white/[0.03] mx-0.5 rounded-full hover:bg-primary/20 transition-colors cursor-col-resize' />
+                    <Panel defaultSize={18} minSize={14} className='min-w-0 overflow-hidden'>
+                      <PlaylistBuilder
+                        playlistManager={playlistManagerRef.current}
+                        onPlayPlaylist={handlePlayPlaylist}
+                        onSegmentSelect={handlePlaySegment}
+                      />
+                    </Panel>
+                  </>
+                )}
+              </PanelGroup>
+            </div>
           </Panel>
-          <PanelResizeHandle className='h-1.5 bg-white/5 my-0.5 mx-2 rounded-full hover:bg-primary/20 transition-colors cursor-row-resize' />
-          {/* Bottom Row: Library and Recommendations */}
+
+          <PanelResizeHandle className='h-1.5 bg-white/[0.03] my-0.5 mx-2 rounded-full hover:bg-primary/20 transition-colors cursor-row-resize' />
+
+          {/* Bottom: Library + AI panels */}
           <Panel defaultSize={35} minSize={20} className='min-h-0 px-2 pb-2'>
-            <div className='h-full rounded-xl border border-white/5 bg-card/30 backdrop-blur-md overflow-hidden'>
+            <div className='h-full rounded-xl border border-white/[0.04] bg-card/25 backdrop-blur-md overflow-hidden'>
               <Tabs defaultValue='library' className='h-full flex flex-col'>
-                <TabsList className='w-full h-8 rounded-none border-b border-white/5 flex-shrink-0 bg-transparent'>
-                  <TabsTrigger
-                    value='library'
-                    className='text-[10px] px-3 h-6'
-                  >
-                    Library
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value='ai-search'
-                    className='text-[10px] px-3 h-6'
-                  >
-                    AI Search
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value='recommendations'
-                    className='text-[10px] px-3 h-6'
-                  >
-                    Recommendations
-                  </TabsTrigger>
+                <TabsList className='w-full h-7 rounded-none border-b border-white/[0.04] flex-shrink-0 bg-transparent gap-0'>
+                  {[
+                    { value: 'library', label: 'Library' },
+                    { value: 'ai-search', label: 'AI Search' },
+                    { value: 'recommendations', label: 'Recommendations' },
+                  ].map(t => (
+                    <TabsTrigger
+                      key={t.value}
+                      value={t.value}
+                      className='text-[9px] px-3 h-6 font-bold tracking-wide uppercase data-[state=active]:text-primary data-[state=active]:bg-primary/10'
+                    >
+                      {t.label}
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
-                <TabsContent
-                  value='library'
-                  className='flex-1 mt-0 min-h-0 overflow-hidden'
-                >
+
+                <TabsContent value='library' className='flex-1 mt-0 min-h-0 overflow-hidden'>
                   <TrackLibrary
                     tracks={tracks}
                     onLoadTrack={loadTrack}
@@ -1352,23 +935,13 @@ export default function Home() {
                     currentKey={getActiveKey()}
                   />
                 </TabsContent>
-                <TabsContent
-                  value='ai-search'
-                  className='flex-1 mt-0 min-h-0 overflow-hidden'
-                >
+                <TabsContent value='ai-search' className='flex-1 mt-0 min-h-0 overflow-hidden'>
                   <NaturalLanguageQuery
                     onLoadTrack={loadTrack}
-                    currentTrackId={
-                      mixerState.deckA.track?.id ||
-                      mixerState.deckB.track?.id ||
-                      undefined
-                    }
+                    currentTrackId={mixerState.deckA.track?.id ?? mixerState.deckB.track?.id}
                   />
                 </TabsContent>
-                <TabsContent
-                  value='recommendations'
-                  className='flex-1 mt-0 min-h-0 overflow-hidden'
-                >
+                <TabsContent value='recommendations' className='flex-1 mt-0 min-h-0 overflow-hidden'>
                   <TrackRecommendations
                     deckA={mixerState.deckA}
                     deckB={mixerState.deckB}
