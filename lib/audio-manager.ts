@@ -191,6 +191,8 @@ class DeckAudio {
 
   load(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      // A seek queued against the previous track must not apply to the new one
+      this.pendingSeek = null;
       if (this.howl) {
         this.howl.unload();
         this.howl = null;
@@ -258,24 +260,34 @@ class DeckAudio {
       this.audioContext.resume().catch(console.error);
     }
 
-    if (this.howl) {
-      // If a specific start time is requested, seek as soon as play starts
-      // This is more reliable for HTML5 audio
-      if (typeof startTime === 'number') {
-        this.howl.once('play', () => {
-          this.howl?.seek(startTime);
-        });
-      } else if (this.pendingSeek !== null) {
-        // If we have a pending seek from before play was called
-        const seekTime = this.pendingSeek;
-        this.howl.once('play', () => {
-          this.howl?.seek(seekTime);
-        });
-        this.pendingSeek = null;
-      }
+    if (!this.howl) return;
 
-      this.howl.play();
+    // Already playing: calling howl.play() again would spawn a second
+    // overlapping Howler instance. Just jump to the requested position.
+    if (this.howl.playing()) {
+      if (typeof startTime === 'number') {
+        this.howl.seek(startTime);
+      }
+      return;
     }
+
+    // If a specific start time is requested, seek as soon as play starts
+    // This is more reliable for HTML5 audio
+    if (typeof startTime === 'number') {
+      this.pendingSeek = null;
+      this.howl.once('play', () => {
+        this.howl?.seek(startTime);
+      });
+    } else if (this.pendingSeek !== null) {
+      // If we have a pending seek from before play was called
+      const seekTime = this.pendingSeek;
+      this.howl.once('play', () => {
+        this.howl?.seek(seekTime);
+      });
+      this.pendingSeek = null;
+    }
+
+    this.howl.play();
   }
 
   pause() {
@@ -285,6 +297,8 @@ class DeckAudio {
   }
 
   stop() {
+    // Stop resets playback to 0 — a stale queued seek must not undo that
+    this.pendingSeek = null;
     if (this.howl) {
       this.howl.stop();
     }

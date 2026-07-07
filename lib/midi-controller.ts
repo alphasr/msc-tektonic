@@ -1,10 +1,10 @@
 // MIDI Controller Integration for DJ Mixer
 // Maps MIDI CC and Note messages to mixer controls
 
-import { DetectedController, MIDIMapping } from '@/types';
-import { detectController, detectAllControllers } from './controller-detector';
-import { loadControllerDatabase } from './controller-database';
-import { getDriverInfo, checkDriverStatus } from './driver-detector';
+import { DetectedController, MIDIMapping } from "@/types";
+import { detectController, detectAllControllers } from "./controller-detector";
+import { loadControllerDatabase } from "./controller-database";
+import { getDriverInfo, checkDriverStatus } from "./driver-detector";
 
 // Re-export MIDIMapping for backward compatibility
 export type { MIDIMapping };
@@ -60,7 +60,7 @@ export class MIDIController {
 
     try {
       if (!navigator.requestMIDIAccess) {
-        console.warn('Web MIDI API not supported in this browser');
+        console.warn("Web MIDI API not supported in this browser");
         return false;
       }
 
@@ -70,13 +70,20 @@ export class MIDIController {
       this.access = await navigator.requestMIDIAccess({ sysex: false });
       await this.setupInputs();
 
+      // Re-detect on hot-plug so a controller connected after page load gets
+      // its mapping applied (onstatechange fires per port — debounce it)
+      let statechangeTimer: ReturnType<typeof setTimeout> | null = null;
       this.access.onstatechange = () => {
-        this.setupInputs();
+        if (statechangeTimer) clearTimeout(statechangeTimer);
+        statechangeTimer = setTimeout(async () => {
+          await this.setupInputs();
+          await this.detectControllers();
+        }, 150);
       };
 
       this.isInitialized = true;
       console.log(
-        `MIDI Controller initialized with ${this.inputs.length} input(s)`
+        `MIDI Controller initialized with ${this.inputs.length} input(s)`,
       );
 
       // Detect controllers after setup
@@ -84,7 +91,7 @@ export class MIDIController {
 
       return true;
     } catch (error) {
-      console.error('Failed to initialize MIDI:', error);
+      console.error("Failed to initialize MIDI:", error);
       return false;
     }
   }
@@ -101,16 +108,16 @@ export class MIDIController {
       };
       this.inputs.push(input);
       console.log(
-        `🎹 MIDI Input: ${input.name} (${input.manufacturer || 'Unknown'})`
+        `🎹 MIDI Input: ${input.name} (${input.manufacturer || "Unknown"})`,
       );
       console.log(`🎹 MIDI Input state: ${input.state}`);
     }
 
     if (this.inputs.length === 0) {
-      console.warn('⚠️ No MIDI inputs found!');
+      console.warn("⚠️ No MIDI inputs found!");
     } else {
       console.log(
-        `✅ ${this.inputs.length} MIDI input(s) ready - try moving faders or pressing buttons!`
+        `✅ ${this.inputs.length} MIDI input(s) ready - try moving faders or pressing buttons!`,
       );
     }
   }
@@ -131,28 +138,30 @@ export class MIDIController {
     if (this.detectedControllers.length > 0) {
       const primaryController = this.detectedControllers[0];
       console.log(
-        `🎯 Detected controller: ${primaryController.name} (${primaryController.manufacturer}) - Confidence: ${primaryController.confidence}`
+        `🎯 Detected controller: ${primaryController.name} (${primaryController.manufacturer}) - Confidence: ${primaryController.confidence}`,
       );
 
-      // Load custom mapping from localStorage if exists
+      // Load custom mapping from localStorage if exists.
+      // Replace (not merge) — leftover default entries would otherwise still
+      // match this controller's messages and trigger the wrong controls.
       const customMapping = this.loadCustomMapping(primaryController.id);
       if (customMapping) {
-        this.setMapping(customMapping);
+        this.replaceMapping(customMapping);
         console.log(`📝 Applied custom mapping for ${primaryController.name}`);
       } else {
-        this.setMapping(primaryController.mapping);
+        this.replaceMapping(primaryController.mapping);
         console.log(`✅ Applied default mapping for ${primaryController.name}`);
       }
 
       // Check driver status
       const driverStatus = checkDriverStatus(primaryController.id);
-      if (driverStatus === 'needed') {
+      if (driverStatus === "needed") {
         const driverInfo = getDriverInfo(primaryController.id);
         if (driverInfo) {
           console.warn(
-            `⚠️ Driver may be required for ${primaryController.name}`
+            `⚠️ Driver may be required for ${primaryController.name}`,
           );
-          console.warn(`   Instructions: ${driverInfo.instructions.join(' ')}`);
+          console.warn(`   Instructions: ${driverInfo.instructions.join(" ")}`);
         }
       }
     } else {
@@ -177,17 +186,17 @@ export class MIDIController {
    */
   setControllerProfile(controllerId: string): boolean {
     const controller = this.detectedControllers.find(
-      (c) => c.id === controllerId
+      (c) => c.id === controllerId,
     );
     if (!controller) {
       console.warn(
-        `Controller ${controllerId} not found in detected controllers`
+        `Controller ${controllerId} not found in detected controllers`,
       );
       return false;
     }
 
     const customMapping = this.loadCustomMapping(controllerId);
-    this.setMapping(customMapping || controller.mapping);
+    this.replaceMapping(customMapping || controller.mapping);
     return true;
   }
 
@@ -213,7 +222,7 @@ export class MIDIController {
       try {
         callback(this.detectedControllers);
       } catch (error) {
-        console.error('Error in detection callback:', error);
+        console.error("Error in detection callback:", error);
       }
     });
   }
@@ -222,7 +231,7 @@ export class MIDIController {
    * Load custom mapping from localStorage
    */
   private loadCustomMapping(controllerId: string): MIDIMapping | null {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === "undefined") return null;
 
     try {
       const key = `midi_custom_mapping_${controllerId}`;
@@ -231,7 +240,7 @@ export class MIDIController {
         return JSON.parse(stored);
       }
     } catch (error) {
-      console.error('Failed to load custom mapping:', error);
+      console.error("Failed to load custom mapping:", error);
     }
 
     return null;
@@ -241,7 +250,7 @@ export class MIDIController {
    * Save custom mapping to localStorage
    */
   saveCustomMapping(controllerId: string, mapping: Partial<MIDIMapping>): void {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     try {
       const key = `midi_custom_mapping_${controllerId}`;
@@ -250,18 +259,18 @@ export class MIDIController {
       localStorage.setItem(key, JSON.stringify(customMapping));
       console.log(`💾 Saved custom mapping for ${controllerId}`);
     } catch (error) {
-      console.error('Failed to save custom mapping:', error);
+      console.error("Failed to save custom mapping:", error);
     }
   }
 
   private learnModeActive: boolean = false;
   private learnModeCallback:
-    | ((type: 'note' | 'cc', value: number, channel: number) => void)
-    | null = null;
+    ((type: "note" | "cc", value: number, channel: number) => void) | null =
+    null;
 
   setLearnMode(
     active: boolean,
-    callback?: (type: 'note' | 'cc', value: number, channel: number) => void
+    callback?: (type: "note" | "cc", value: number, channel: number) => void,
   ) {
     this.learnModeActive = active;
     this.learnModeCallback = callback || null;
@@ -271,7 +280,7 @@ export class MIDIController {
     try {
       const midiEvent = event as any;
       if (!midiEvent || !midiEvent.data) {
-        console.warn('Invalid MIDI event:', event);
+        console.warn("Invalid MIDI event:", event);
         return;
       }
 
@@ -285,12 +294,12 @@ export class MIDIController {
           // Note message
           if (data2 > 0) {
             // Only on note on
-            this.learnModeCallback('note', data1, channel);
+            this.learnModeCallback("note", data1, channel);
             return; // Don't process normally in learn mode
           }
         } else if (messageType === 0xb0) {
           // CC message
-          this.learnModeCallback('cc', data1, channel);
+          this.learnModeCallback("cc", data1, channel);
           return; // Don't process normally in learn mode
         }
       }
@@ -298,11 +307,15 @@ export class MIDIController {
       // Debug logging for unmapped controls (reduced spam)
       // Log all messages for first 10 seconds to help identify controls
       const shouldLog = Date.now() - (this as any).startTime < 10000;
-      if (shouldLog && messageType === 0xb0) {
+      if (
+        shouldLog &&
+        (messageType === 0xb0 || messageType === 0x90 || messageType === 0x80)
+      ) {
+        const kind = messageType === 0xb0 ? "CC" : "Note";
         console.log(
           `🎹 MIDI: type=0x${messageType
             .toString(16)
-            .padStart(2, '0')} ch=${channel} CC=${data1} value=${data2}`
+            .padStart(2, "0")} ch=${channel} ${kind}=${data1} value=${data2}`,
         );
       }
 
@@ -333,50 +346,79 @@ export class MIDIController {
         console.log(`MIDI Pitch Bend: channel=${channel} value=${value}`);
         // Map to jogwheel based on channel
         if (channel === 0) {
-          this.triggerCallback('jogwheelA', value / 8192); // Normalize to -1 to 1
+          this.triggerCallback("jogwheelA", value / 8192); // Normalize to -1 to 1
         } else if (channel === 1) {
-          this.triggerCallback('jogwheelB', value / 8192);
+          this.triggerCallback("jogwheelB", value / 8192);
         }
       }
     } catch (error) {
-      console.error('Error handling MIDI message:', error);
+      console.error("Error handling MIDI message:", error);
     }
+  }
+
+  /**
+   * Resolve an incoming MIDI message to a mapped control name.
+   *
+   * Mapping values come in two formats (see MIDIMapping in types):
+   *  - string "n<ch>:<num>" / "cc<ch>:<num>" — exact channel-aware match,
+   *    required for controllers (e.g. Numark Party Mix) that reuse numbers
+   *    across channels for decks, pads and the mixer section
+   *  - number — legacy channel-agnostic match; deck inferred from channel
+   *    (ch0 → deckA_*, ch1 → deckB_*) with a generic fallback
+   */
+  private resolveControl(
+    kind: "n" | "cc",
+    channel: number,
+    num: number,
+  ): string | null {
+    const exactKey = `${kind}${channel}:${num}`;
+    const channelPrefix =
+      channel === 0 ? "deckA" : channel === 1 ? "deckB" : null;
+
+    // Priority: exact channel-aware match > channel-prefixed numeric > any numeric
+    let prefixed: string | null = null;
+    let generic: string | null = null;
+    for (const [name, value] of Object.entries(this.mapping)) {
+      if (value === exactKey) return name;
+      if (typeof value === "number" && value === num) {
+        if (channelPrefix && name.startsWith(channelPrefix)) {
+          prefixed = prefixed ?? name;
+        } else {
+          generic = generic ?? name;
+        }
+      }
+    }
+    return prefixed ?? generic;
   }
 
   private mapNoteToControl(
     note: number,
     pressed: boolean,
-    channel: number = 0
+    channel: number = 0,
   ) {
     if (!pressed) return; // Only trigger on press, not release
 
     const noteKey = `${channel}-${note}`;
+    const controlName = this.resolveControl("n", channel, note);
 
-    // For channel-aware controllers (like XDJ-RR), try channel-prefixed lookup first
-    // XDJ-RR: channel 0 = Deck 1, channel 1 = Deck 2
-    const channelPrefix = channel === 0 ? 'deckA' : channel === 1 ? 'deckB' : null;
-    let mappedControl: [string, number] | undefined;
-
-    if (channelPrefix) {
-      // Try to find a channel-specific match first (e.g. deckA_play on note 11, ch0)
-      mappedControl = Object.entries(this.mapping).find(([key, value]) =>
-        value === note && key.startsWith(channelPrefix)
-      ) as [string, number] | undefined;
-    }
-
-    // Fallback to channel-agnostic lookup
-    if (!mappedControl) {
-      mappedControl = Object.entries(this.mapping).find(([key, value]) => value === note) as [string, number] | undefined;
-    }
-
-    if (mappedControl) {
-      const [controlName] = mappedControl;
-      this.triggerCallback(controlName, 1);
+    if (controlName) {
+      // Sync / Master buttons arrive as notes on some controllers (Party Mix)
+      if (controlName.includes("_sync")) {
+        const deckLetter = controlName.startsWith("deckA") ? "A" : "B";
+        this.triggerCallback(`deck${deckLetter}_sync_hw`, 1);
+      } else if (controlName.includes("_master")) {
+        const deckLetter = controlName.startsWith("deckA") ? "A" : "B";
+        this.triggerCallback(`deck${deckLetter}_master_hw`, 1);
+      } else {
+        this.triggerCallback(controlName, 1);
+      }
     } else {
       // Log unmapped notes (only once per unique note)
       if (!this.unmappedCCs.has(noteKey)) {
         this.unmappedCCs.add(noteKey);
-        console.log(`⚠️ Note ${note} (ch ${channel}) not mapped yet for this controller`);
+        console.log(
+          `⚠️ Note ${note} (ch ${channel}) not mapped yet for this controller`,
+        );
       }
     }
   }
@@ -384,63 +426,64 @@ export class MIDIController {
   private mapCCToControl(cc: number, value: number, channel: number = 0) {
     const normalizedValue = value / 127; // 0-1
     const ccKey = `${channel}-${cc}`;
-
-    // Channel-aware lookup (XDJ-RR: ch0=DeckA, ch1=DeckB)
-    const channelPrefix = channel === 0 ? 'deckA' : channel === 1 ? 'deckB' : null;
-    let mappedControl: [string, number] | undefined;
-
-    if (channelPrefix) {
-      mappedControl = Object.entries(this.mapping).find(([key, val]) =>
-        val === cc && key.startsWith(channelPrefix)
-      ) as [string, number] | undefined;
-    }
-
-    // Fallback to generic lookup
-    if (!mappedControl) {
-      mappedControl = Object.entries(this.mapping).find(([key, val]) => val === cc) as [string, number] | undefined;
-    }
+    const mappedControl = this.resolveControl("cc", channel, cc);
 
     if (mappedControl) {
-      const [controlName] = mappedControl;
+      const controlName = mappedControl;
 
+      // Relative jog wheel (Numark-style): 1..63 = forward ticks,
+      // 65..127 = backward ticks (two's complement around 64)
+      if (controlName.includes("jogwheel")) {
+        const ticks = value < 64 ? value : value - 128;
+        const deckLetter = controlName.startsWith("deckA") ? "A" : "B";
+        this.triggerCallback(`jogwheel${deckLetter}`, ticks);
+      }
       // XDJ-RR tempo fader: CC 0 → pitch rate (0=+16%, 64=0%, 127=-16% — Pioneer inverts tempo)
-      if (controlName.includes('tempo')) {
+      else if (controlName.includes("tempo")) {
         // Pioneer tempo fader is inverted: 0 = max speed, 127 = min speed
         // Center (64) = 0%, full range ±16% (0.84–1.16)
         const centeredNorm = (64 - value) / 64; // +1 to -1
         const rate = 1.0 + centeredNorm * 0.16;
-        const deckLetter = controlName.startsWith('deckA') ? 'A' : 'B';
+        const deckLetter = controlName.startsWith("deckA") ? "A" : "B";
         this.triggerCallback(`jogwheelRate${deckLetter}`, rate);
       }
       // Sync / Master buttons from hardware
-      else if (controlName.includes('_sync')) {
-        const deckLetter = controlName.startsWith('deckA') ? 'A' : 'B';
+      else if (controlName.includes("_sync")) {
+        const deckLetter = controlName.startsWith("deckA") ? "A" : "B";
         this.triggerCallback(`deck${deckLetter}_sync_hw`, 1);
-      }
-      else if (controlName.includes('_master')) {
-        const deckLetter = controlName.startsWith('deckA') ? 'A' : 'B';
+      } else if (controlName.includes("_master")) {
+        const deckLetter = controlName.startsWith("deckA") ? "A" : "B";
         this.triggerCallback(`deck${deckLetter}_master_hw`, 1);
       }
       // Volume / Gain faders
-      else if (controlName.includes('volume') || controlName.includes('masterVolume') || controlName.includes('gain')) {
+      else if (
+        controlName.includes("volume") ||
+        controlName.includes("masterVolume") ||
+        controlName.includes("gain")
+      ) {
         this.triggerCallback(controlName, normalizedValue * 100);
       }
       // EQ knobs
-      else if (controlName.includes('low') || controlName.includes('mid') || controlName.includes('high')) {
+      else if (
+        controlName.includes("low") ||
+        controlName.includes("mid") ||
+        controlName.includes("high")
+      ) {
         this.triggerCallback(controlName, (normalizedValue - 0.5) * 24);
       }
       // Crossfader
-      else if (controlName === 'crossfader') {
+      else if (controlName === "crossfader") {
         this.triggerCallback(controlName, (normalizedValue - 0.5) * 200);
-      }
-      else {
+      } else {
         this.triggerCallback(controlName, normalizedValue);
       }
     } else {
       // Unmapped - log for debugging
       if (!this.unmappedCCs.has(ccKey)) {
         this.unmappedCCs.add(ccKey);
-        console.log(`⚠️ CC ${cc} (ch ${channel}) not mapped yet - value=${value}`);
+        console.log(
+          `⚠️ CC ${cc} (ch ${channel}) not mapped yet - value=${value}`,
+        );
       }
     }
   }
@@ -469,9 +512,14 @@ export class MIDIController {
     }
   }
 
-  // Update mapping
+  // Merge partial overrides into the current mapping
   setMapping(mapping: Partial<MIDIMapping>) {
     this.mapping = { ...this.mapping, ...mapping };
+  }
+
+  // Replace the mapping wholesale (used when a controller profile is applied)
+  replaceMapping(mapping: MIDIMapping) {
+    this.mapping = { ...mapping };
   }
 
   // Get available MIDI inputs

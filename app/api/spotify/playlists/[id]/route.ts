@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getPlaylistTrackIds,
-  getTracksById,
+  getPlaylistTracksFromItems,
   getAudioFeatures,
   refreshAccessToken,
   spotifyKeyToCamelot,
@@ -19,10 +18,24 @@ async function getValidAccessToken(): Promise<string | null> {
   if (accessToken && Date.now() < expiresAt - 60000) return accessToken;
   try {
     const newTokens = await refreshAccessToken(refreshToken);
-    cookieStore.set('spotify_access_token', newTokens.access_token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 3600, path: '/' });
-    cookieStore.set('spotify_expires_at', String(newTokens.expires_at), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 60 * 60 * 24 * 30, path: '/' });
+    cookieStore.set('spotify_access_token', newTokens.access_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 3600,
+      path: '/',
+    });
+    cookieStore.set('spotify_expires_at', String(newTokens.expires_at), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 30,
+      path: '/',
+    });
     return newTokens.access_token;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export interface EnrichedSpotifyTrack {
@@ -35,33 +48,39 @@ export interface EnrichedSpotifyTrack {
   previewUrl: string | null;
   spotifyUrl: string;
   bpm: number;
-  key: string;        // Camelot notation e.g. "8B"
-  energy: number;     // 0-10 scaled
+  key: string; // Camelot notation e.g. "8B"
+  energy: number; // 0-10 scaled
   popularity: number;
 }
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const token = await getValidAccessToken();
   if (!token) {
-    return NextResponse.json({ error: 'Not authenticated', authenticated: false }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Not authenticated', authenticated: false },
+      { status: 401 },
+    );
   }
 
   try {
-    // Two-step: get IDs from /items (limit 50, no fields), then full objects from /tracks
-    const trackIds = await getPlaylistTrackIds(token, id);
-    console.log(`[spotify/playlists] got ${trackIds.length} track IDs for playlist ${id}`);
-
-    const validTracks = await getTracksById(token, trackIds);
-    console.log(`[spotify/playlists] fetched ${validTracks.length} full track objects`);
+    // Single-step: full TrackObject is embedded in PlaylistTrackObject.item per the
+    // Spotify OpenAPI schema — no second call to the deprecated GET /tracks needed.
+    const validTracks = await getPlaylistTracksFromItems(token, id);
+    console.log(
+      `[spotify/playlists] fetched ${validTracks.length} tracks for playlist ${id}`,
+    );
 
     // Audio features API is deprecated (403 for new apps) — returns empty gracefully
-    const audioFeatures = await getAudioFeatures(token, validTracks.map((t) => t.id));
+    const audioFeatures = await getAudioFeatures(
+      token,
+      validTracks.map((t) => t.id),
+    );
     const featuresMap = new Map<string, SpotifyAudioFeatures>(
-      audioFeatures.map((f) => [f.id, f])
+      audioFeatures.map((f) => [f.id, f]),
     );
 
     const enriched: EnrichedSpotifyTrack[] = validTracks.map((track) => {
@@ -72,7 +91,11 @@ export async function GET(
         artist: (track.artists ?? []).map((a) => a.name).join(', '),
         album: track.album?.name ?? '',
         // Use smallest available image (Spotify returns sorted largest-first)
-        albumArt: (track.album?.images?.[track.album.images.length - 1] ?? track.album?.images?.[0])?.url ?? null,
+        albumArt:
+          (
+            track.album?.images?.[track.album.images.length - 1] ??
+            track.album?.images?.[0]
+          )?.url ?? null,
         durationMs: track.duration_ms,
         previewUrl: track.preview_url,
         spotifyUrl: track.external_urls?.spotify ?? '',
@@ -85,7 +108,17 @@ export async function GET(
 
     return NextResponse.json({ tracks: enriched });
   } catch (err: any) {
-    console.error('[spotify/playlists] Failed to fetch tracks:', err?.message, err?.stack);
-    return NextResponse.json({ error: err.message, stack: process.env.NODE_ENV === 'development' ? err.stack : undefined }, { status: 500 });
+    console.error(
+      '[spotify/playlists] Failed to fetch tracks:',
+      err?.message,
+      err?.stack,
+    );
+    return NextResponse.json(
+      {
+        error: err.message,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+      },
+      { status: 500 },
+    );
   }
 }

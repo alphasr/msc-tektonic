@@ -10,7 +10,7 @@ export async function GET() {
     // Convert to array and format as Track objects for frontend
     const allManifests = Object.values(manifests);
     const readyManifests = allManifests.filter(
-      (manifest) => manifest.status === 'ready' && manifest.summary
+      (manifest) => manifest.status === 'ready' && manifest.summary,
     );
     console.log('Ready manifests:', readyManifests.length);
 
@@ -43,10 +43,15 @@ export async function GET() {
           duration: manifest.summary!.duration,
           tags: manifest.source === 'spotify' ? ['spotify'] : [],
           phrases: manifest.summary!.phrases,
-          audioUrl: manifest.spotify_preview_url,
+          // Prefer locally-served audio (downloaded preview) over the expiring CDN URL
+          audioUrl: manifest.file_path
+            ? `/api/audio/${manifest.track_id}`
+            : manifest.spotify_preview_url,
+          albumArt: manifest.album_art_url,
+          spotifyUrl: manifest.spotify_url,
           waveform,
         };
-      })
+      }),
     );
 
     console.log('Returning tracks:', tracks.length);
@@ -58,7 +63,7 @@ export async function GET() {
         error: 'Failed to load tracks',
         details: error instanceof Error ? error.message : String(error),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

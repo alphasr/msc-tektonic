@@ -9,6 +9,8 @@ export interface Track {
   tags: string[];
   phrases: number;
   audioUrl?: string;
+  albumArt?: string;
+  spotifyUrl?: string;
   waveform: number[]; // Real waveform data from analysis
 }
 
@@ -30,11 +32,11 @@ export interface MixerState {
   deckB: DeckState;
   crossfader: number; // -100 to 100
   masterVolume: number;
-  masterDeck: 'A' | 'B' | null;
+  masterDeck: "A" | "B" | null;
 }
 
 export interface PhraseSegment {
-  type: 'intro' | 'verse' | 'chorus' | 'bridge' | 'outro';
+  type: "intro" | "verse" | "chorus" | "bridge" | "outro";
   start: number;
   end: number;
   energy: number;
@@ -73,10 +75,10 @@ export interface TransitionCandidate {
 }
 
 export interface SystemStatus {
-  backend: 'operational' | 'degraded' | 'outage';
-  database: 'operational' | 'degraded' | 'outage';
-  storage: 'operational' | 'degraded' | 'outage';
-  analysis: 'operational' | 'degraded' | 'outage';
+  backend: "operational" | "degraded" | "outage";
+  database: "operational" | "degraded" | "outage";
+  storage: "operational" | "degraded" | "outage";
+  analysis: "operational" | "degraded" | "outage";
   latency?: number;
 }
 
@@ -98,64 +100,26 @@ export interface Stats {
 // MIDI Controller Detection Types
 
 // MIDI Mapping interface (moved here to avoid circular dependency)
+//
+// Control names: deckA_play, deckA_pause, deckA_stop, deckA_cue, deckA_volume,
+// deckA_low/mid/high (EQ), deckA_gain, deckA_tempo, deckA_hotcue1-4,
+// deckA_loopIn/Out/Rel/2x/4x/8x, deckA_jogwheel, deckA_sync, deckA_master
+// (same for deckB), plus crossfader, masterVolume, gainA/gainB, fx1-3.
+//
+// Values come in two formats:
+//  - number: channel-agnostic note/CC number (legacy — deck inferred from
+//    MIDI channel 0→A, 1→B)
+//  - string: channel-aware "n<ch>:<num>" for notes or "cc<ch>:<num>" for CCs,
+//    e.g. "n0:0" (note 0 on channel 0) or "cc15:8" (CC 8 on channel 15).
+//    Needed for controllers like the Numark Party Mix that reuse the same
+//    note/CC numbers across channels for decks, pads and the mixer section.
 export interface MIDIMapping {
-  // Deck A Controls
-  deckA_play?: number; // Note
-  deckA_pause?: number; // Note
-  deckA_stop?: number; // Note
-  deckA_cue?: number; // Note
-  deckA_volume?: number; // CC
-  deckA_low?: number; // CC
-  deckA_mid?: number; // CC
-  deckA_high?: number; // CC
-  deckA_hotcue1?: number; // Note
-  deckA_hotcue2?: number; // Note
-  deckA_hotcue3?: number; // Note
-  deckA_hotcue4?: number; // Note
-  deckA_loopIn?: number; // Note
-  deckA_loopOut?: number; // Note
-  deckA_loopRel?: number; // Note
-  deckA_loop2x?: number; // Note
-  deckA_loop4x?: number; // Note
-  deckA_loop8x?: number; // Note
-  deckA_jogwheel?: number; // CC or Pitch Bend
-
-  // Deck B Controls
-  deckB_play?: number; // Note
-  deckB_pause?: number; // Note
-  deckB_stop?: number; // Note
-  deckB_cue?: number; // Note
-  deckB_volume?: number; // CC
-  deckB_low?: number; // CC
-  deckB_mid?: number; // CC
-  deckB_high?: number; // CC
-  deckB_hotcue1?: number; // Note
-  deckB_hotcue2?: number; // Note
-  deckB_hotcue3?: number; // Note
-  deckB_hotcue4?: number; // Note
-  deckB_loopIn?: number; // Note
-  deckB_loopOut?: number; // Note
-  deckB_loopRel?: number; // Note
-  deckB_loop2x?: number; // Note
-  deckB_loop4x?: number; // Note
-  deckB_loop8x?: number; // Note
-  deckB_jogwheel?: number; // CC or Pitch Bend
-
-  // Mixer Controls
-  crossfader?: number; // CC
-  masterVolume?: number; // CC
-  gainA?: number; // CC
-  gainB?: number; // CC
-
-  // Effects (if available)
-  fx1?: number; // CC
-  fx2?: number; // CC
-  fx3?: number; // CC
+  [control: string]: number | string | undefined;
 }
 
 export interface DriverInfo {
   required: boolean;
-  os: 'windows' | 'macos' | 'linux' | 'all';
+  os: "windows" | "macos" | "linux" | "all";
   downloadUrl?: string;
   instructions: string[];
   classCompliant: boolean;
@@ -179,13 +143,13 @@ export interface DetectedController {
   name: string;
   manufacturer: string;
   model: string;
-  confidence: 'high' | 'medium' | 'low';
+  confidence: "high" | "medium" | "low";
   mapping: MIDIMapping;
   driverInfo?: DriverInfo;
   deviceId?: string;
 }
 
-export type DriverStatus = 'installed' | 'needed' | 'unknown' | 'not_required';
+export type DriverStatus = "installed" | "needed" | "unknown" | "not_required";
 
 // Playlist and Segment Types
 export interface PlaylistSegment {
@@ -258,7 +222,7 @@ export interface AudioFeatures {
   mid: number; // 250-8000Hz energy
   high: number; // >8000Hz energy
   // Context
-  deckId: 'A' | 'B';
+  deckId: "A" | "B";
   trackId: string;
 }
 
@@ -279,7 +243,7 @@ export interface LLMPrediction {
   contextBoosts: Map<string, number>; // trackId -> boost (0.5-2.0)
   // Explanations
   transitionExplanation: string;
-  energyTrend: 'rising' | 'falling' | 'stable';
+  energyTrend: "rising" | "falling" | "stable";
   mixingAdvice: string;
 }
 
@@ -300,5 +264,5 @@ export interface MLPerformanceMetrics {
   avgInferenceTime: number; // ms per frame
   workerBacklog: number; // Queued frames
   cpuUsage: number; // Estimated %
-  degradationLevel: 'none' | 'minor' | 'moderate' | 'severe';
+  degradationLevel: "none" | "minor" | "moderate" | "severe";
 }

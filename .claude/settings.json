@@ -1,0 +1,52 @@
+{
+  "permissions": {
+    "deny": [
+      "Zsh(git push*)",
+      "Zsh(git commit*)",
+      "Zsh(git add*)",
+      "Bash(git push*)",
+      "Bash(git commit*)",
+      "Bash(git add*)"
+    ],
+    "allow": [
+      "Zsh(npm run type-check*)",
+      "Zsh(npm run build*)",
+      "Zsh(grep:*)",
+      "Zsh(ls:*)",
+      "Zsh(find:*)",
+      "Bash(npm run type-check*)",
+      "Bash(npm run build*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; [[ \"$f\" =~ \\.(js|jsx|ts|tsx|mjs)$ ]] && npx eslint --fix \"$f\" 2>/dev/null; [[ \"$f\" =~ \\.(js|jsx|ts|tsx|mjs|css|md|json)$ ]] && npx prettier --write \"$f\" 2>/dev/null; } || true",
+            "statusMessage": "Linting & formatting..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if echo \"$cmd\" | grep -qE '^git (add|commit|restore|clean|pull|merge|rebase|stash)( |$)|^git reset.*--hard|^git checkout( --| \\.)|^git push.*(-f |--force)|^git branch.*(-d|-D)|^git tag'; then echo '{\"continue\": false, \"stopReason\": \"Blocked by project policy: dangerous git command. Run git operations manually in the terminal.\"}'; exit 1; fi"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "impeccable@impeccable": true
+  }
+}

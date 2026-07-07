@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import fs from 'fs/promises';
+import path from 'path';
 import {
   initStorage,
   saveFile,
@@ -6,22 +9,24 @@ import {
   generateTrackId,
   calculateDigest,
   getManifest,
+  getFeaturesDir,
 } from '@/lib/storage';
-import { analyzeQueue } from '@/lib/queue';
+import { getAudioAnalysis, audioAnalysisToSummary } from '@/lib/spotify';
 
-// Register the analysis worker handler
+// Register storage
 initStorage();
-import '@/lib/worker';
 
 export interface ImportTrack {
-  id: string;           // Spotify track ID
+  id: string; // Spotify track ID
   name: string;
   artist: string;
   previewUrl: string | null;
-  bpm: number;          // 0 if unavailable
-  key: string;          // '?' if unavailable
-  energy: number;       // 0-10 scaled
+  bpm: number; // 0 if unavailable
+  key: string; // '?' if unavailable
+  energy: number; // 0-10 scaled
   durationMs: number;
+  albumArt: string | null;
+  spotifyUrl: string;
 }
 
 export interface ImportResult {
@@ -33,15 +38,21 @@ export interface ImportResult {
 
 export async function POST(req: NextRequest) {
   try {
+    const cookieStore = await cookies();
+    const accessToken = cookieStore.get('spotify_access_token')?.value ?? null;
+
     const body = await req.json();
     const tracks: ImportTrack[] = body.tracks;
 
     if (!Array.isArray(tracks) || tracks.length === 0) {
-      return NextResponse.json({ error: 'No tracks provided' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'No tracks provided' },
+        { status: 400 },
+      );
     }
 
     const results: ImportResult[] = await Promise.all(
-      tracks.map((track) => importTrack(track))
+      tracks.map((track) => importTrack(track, accessToken)),
     );
 
     const queued = results.filter((r) => r.status === 'queued').length;
@@ -56,21 +67,84 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function importTrack(track: ImportTrack): Promise<ImportResult> {
+async function importTrack(
+  track: ImportTrack,
+  accessToken: string | null,
+): Promise<ImportResult> {
   try {
     if (track.previewUrl) {
-      return await importWithPreview(track);
+      return await importWithPreview(track, accessToken);
     } else {
-      return await importMetadataOnly(track);
+      return await importMetadataOnly(track, accessToken);
     }
   } catch (err: any) {
     console.error(`[spotify/import] Failed for ${track.id}:`, err);
-    return { spotify_id: track.id, track_id: null, status: 'error', reason: err.message };
+    return {
+      spotify_id: track.id,
+      track_id: null,
+      status: 'error',
+      reason: err.message,
+    };
   }
 }
 
-async function importWithPreview(track: ImportTrack): Promise<ImportResult> {
-  // Download the 30s preview MP3 from Spotify's CDN (server-to-CDN, no CORS)
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+/** Calls getAudioAnalysis and returns a summary + waveform; falls back to metadata placeholders. */
+async function fetchAnalysis(
+  accessToken: string | null,
+  spotifyId: string,
+  fallbackBpm: number,
+  fallbackKey: string,
+  fallbackEnergy: number,
+  durationMs: number,
+): Promise<{
+  summary: ReturnType<typeof audioAnalysisToSummary>['summary'];
+  waveform: number[] | null;
+}> {
+  if (accessToken) {
+    const analysis = await getAudioAnalysis(accessToken, spotifyId);
+    if (analysis) {
+      const result = audioAnalysisToSummary(analysis);
+      return result;
+    }
+    console.warn(
+      `[spotify/import] getAudioAnalysis returned null for ${spotifyId} (endpoint may be deprecated for this app tier)`,
+    );
+  }
+  return {
+    summary: {
+      tempo_bpm: fallbackBpm || 0,
+      key: fallbackKey || '?',
+      energy: fallbackEnergy || 0,
+      duration: Math.round(durationMs / 1000),
+      phrases: 0,
+      bars: 0,
+    },
+    waveform: null,
+  };
+}
+
+/** Saves a waveform array to the features directory. No-op if waveform is null. */
+async function saveAnalysisFiles(
+  track_id: string,
+  waveform: number[] | null,
+): Promise<void> {
+  if (!waveform) return;
+  const featDir = getFeaturesDir(track_id);
+  await fs.mkdir(featDir, { recursive: true });
+  await fs.writeFile(
+    path.join(featDir, 'waveform.json'),
+    JSON.stringify(waveform),
+    'utf-8',
+  );
+}
+
+async function importWithPreview(
+  track: ImportTrack,
+  accessToken: string | null,
+): Promise<ImportResult> {
+  // Download the 30s preview MP3 from Spotify's CDN
   const res = await fetch(track.previewUrl!);
   if (!res.ok) {
     throw new Error(`Failed to download preview (${res.status})`);
@@ -78,19 +152,64 @@ async function importWithPreview(track: ImportTrack): Promise<ImportResult> {
   const buffer = Buffer.from(await res.arrayBuffer());
 
   const contentDigest = calculateDigest(buffer);
-  const track_id = generateTrackId(track.artist, track.name, buffer.byteLength, contentDigest);
+  const track_id = generateTrackId(
+    track.artist,
+    track.name,
+    buffer.byteLength,
+    contentDigest,
+  );
 
-  // Deduplicate — use getManifest directly to handle spotify metadata-only entries too
   const existing = await getManifest(track_id);
   if (existing) {
-    return { spotify_id: track.id, track_id, status: 'skipped', reason: 'already imported' };
+    // Re-analyze if the stored analysis is just placeholder zeros
+    const isStale =
+      !existing.summary ||
+      existing.summary.tempo_bpm === 0 ||
+      existing.summary.key === '?';
+    if (isStale && accessToken) {
+      const { summary, waveform } = await fetchAnalysis(
+        accessToken,
+        track.id,
+        track.bpm,
+        track.key,
+        track.energy,
+        track.durationMs,
+      );
+      if (summary.tempo_bpm > 0 || summary.key !== '?') {
+        await saveAnalysisFiles(track_id, waveform);
+        existing.summary = summary;
+        existing.album_art_url =
+          existing.album_art_url ?? track.albumArt ?? undefined;
+        existing.spotify_url =
+          existing.spotify_url ?? (track.spotifyUrl || undefined);
+        existing.updated_at = new Date().toISOString();
+        await saveManifest(existing);
+        return { spotify_id: track.id, track_id, status: 'ready' };
+      }
+    }
+    return {
+      spotify_id: track.id,
+      track_id,
+      status: 'skipped',
+      reason: 'already imported',
+    };
   }
 
   const filePath = await saveFile(track_id, buffer, 'mp3');
 
+  const { summary, waveform } = await fetchAnalysis(
+    accessToken,
+    track.id,
+    track.bpm,
+    track.key,
+    track.energy,
+    track.durationMs,
+  );
+  await saveAnalysisFiles(track_id, waveform);
+
   const manifest = {
     track_id,
-    status: 'queued' as const,
+    status: 'ready' as const,
     artist: track.artist,
     title: track.name,
     file_size: buffer.byteLength,
@@ -98,25 +217,76 @@ async function importWithPreview(track: ImportTrack): Promise<ImportResult> {
     content_digest: contentDigest,
     source: 'spotify' as const,
     spotify_preview_url: track.previewUrl!,
+    album_art_url: track.albumArt ?? undefined,
+    spotify_url: track.spotifyUrl || undefined,
+    summary,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
   await saveManifest(manifest);
-  await analyzeQueue.publish('analyze', { track_id, path: filePath });
 
-  return { spotify_id: track.id, track_id, status: 'queued' };
+  return { spotify_id: track.id, track_id, status: 'ready' };
 }
 
-async function importMetadataOnly(track: ImportTrack): Promise<ImportResult> {
-  // No audio — create a manifest directly using Spotify metadata as analysis summary
+async function importMetadataOnly(
+  track: ImportTrack,
+  accessToken: string | null,
+): Promise<ImportResult> {
+  // No audio — create a manifest using Spotify Audio Analysis API for real data
   const contentDigest = `spotify_${track.id}`;
-  const track_id = generateTrackId(track.artist, track.name, track.durationMs, contentDigest);
+  const track_id = generateTrackId(
+    track.artist,
+    track.name,
+    track.durationMs,
+    contentDigest,
+  );
 
   const existing = await getManifest(track_id);
   if (existing) {
-    return { spotify_id: track.id, track_id, status: 'skipped', reason: 'already imported' };
+    // Re-analyze if the stored analysis is just placeholder zeros
+    const isStale =
+      !existing.summary ||
+      existing.summary.tempo_bpm === 0 ||
+      existing.summary.key === '?';
+    if (isStale && accessToken) {
+      const { summary, waveform } = await fetchAnalysis(
+        accessToken,
+        track.id,
+        track.bpm,
+        track.key,
+        track.energy,
+        track.durationMs,
+      );
+      if (summary.tempo_bpm > 0 || summary.key !== '?') {
+        await saveAnalysisFiles(track_id, waveform);
+        existing.summary = summary;
+        existing.album_art_url =
+          existing.album_art_url ?? track.albumArt ?? undefined;
+        existing.spotify_url =
+          existing.spotify_url ?? (track.spotifyUrl || undefined);
+        existing.updated_at = new Date().toISOString();
+        await saveManifest(existing);
+        return { spotify_id: track.id, track_id, status: 'ready' };
+      }
+    }
+    return {
+      spotify_id: track.id,
+      track_id,
+      status: 'skipped',
+      reason: 'already imported',
+    };
   }
+
+  const { summary, waveform } = await fetchAnalysis(
+    accessToken,
+    track.id,
+    track.bpm,
+    track.key,
+    track.energy,
+    track.durationMs,
+  );
+  await saveAnalysisFiles(track_id, waveform);
 
   const manifest = {
     track_id,
@@ -128,14 +298,9 @@ async function importMetadataOnly(track: ImportTrack): Promise<ImportResult> {
     content_digest: contentDigest,
     source: 'spotify' as const,
     spotify_preview_url: undefined,
-    summary: {
-      tempo_bpm: track.bpm || 0,
-      key: track.key === '?' ? '?' : track.key,
-      energy: track.energy || 0,
-      duration: Math.round(track.durationMs / 1000),
-      phrases: 0,
-      bars: 0,
-    },
+    album_art_url: track.albumArt ?? undefined,
+    spotify_url: track.spotifyUrl || undefined,
+    summary,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

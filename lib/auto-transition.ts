@@ -21,6 +21,7 @@ export class AutoTransitionManager {
   private config: AutoTransitionConfig;
   private currentSegmentId: string | null = null;
   private currentDeck: 'A' | 'B' = 'A';
+  private preloadedSegmentId: string | null = null;
   private isTransitioning = false;
   private monitorInterval: NodeJS.Timeout | null = null;
   private listeners: ((event: TransitionEvent) => void)[] = [];
@@ -82,6 +83,26 @@ export class AutoTransitionManager {
   }
 
   /**
+   * Preload a segment on a specific deck: load the audio only.
+   * Playback starts when the crossfade begins, so the listener hears the
+   * segment from its actual startTime.
+   */
+  private async preloadSegment(
+    segment: PlaylistSegment,
+    deck: 'A' | 'B'
+  ): Promise<void> {
+    const deckInstance = this.audioManager.getDeck(deck);
+
+    if (!deckInstance) {
+      throw new Error(`Deck ${deck} not available`);
+    }
+
+    const audioUrl = `/api/audio/${segment.trackId}?start=${segment.startTime}&end=${segment.endTime}`;
+    await deckInstance.load(audioUrl);
+    deckInstance.setVolume(0);
+  }
+
+  /**
    * Start monitoring playback for transitions
    */
   private startMonitoring(): void {
@@ -123,15 +144,16 @@ export class AutoTransitionManager {
     const segmentElapsed = currentTime - currentSegment.startTime;
     const remainingTime = Math.max(0, currentSegment.duration - segmentElapsed);
 
-    // Preload next segment
+    // Preload next segment (once — this check fires every tick)
     if (remainingTime <= this.config.preloadTime) {
       const nextSegment = this.playlistManager.getNextSegment(
         this.currentSegmentId
       );
-      if (nextSegment) {
+      if (nextSegment && this.preloadedSegmentId !== nextSegment.id) {
         const nextDeck = this.currentDeck === 'A' ? 'B' : 'A';
         try {
-          await this.playSegment(nextSegment, nextDeck);
+          await this.preloadSegment(nextSegment, nextDeck);
+          this.preloadedSegmentId = nextSegment.id;
           this.emitEvent({
             type: 'segment_preloaded',
             segment: nextSegment,
@@ -198,6 +220,16 @@ export class AutoTransitionManager {
       return;
     }
 
+    // Start the incoming segment now (preload only loaded it) so the listener
+    // hears it from its actual startTime as the fade brings it in
+    nextDeckInstance.setVolume(0);
+    nextDeckInstance.play(nextSegment.startTime);
+    this.emitEvent({
+      type: 'segment_started',
+      segment: nextSegment,
+      deck: nextDeck,
+    });
+
     // Crossfade over transition duration
     const steps = 20; // Number of fade steps
     const stepDuration = (this.config.crossfadeDuration * 1000) / steps;
@@ -221,6 +253,7 @@ export class AutoTransitionManager {
     // Update state
     this.currentSegmentId = nextSegment.id;
     this.currentDeck = nextDeck;
+    this.preloadedSegmentId = null;
     this.isTransitioning = false;
 
     this.emitEvent({
@@ -284,6 +317,7 @@ export class AutoTransitionManager {
   stop(): void {
     this.stopMonitoring();
     this.currentSegmentId = null;
+    this.preloadedSegmentId = null;
     this.isTransitioning = false;
   }
 }

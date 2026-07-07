@@ -114,5 +114,111 @@
       "phrases": 3,
       "bars": 24
     }
+  },
+  "0bd6daea2654f481": {
+    "track_id": "0bd6daea2654f481",
+    "status": "ready",
+    "artist": "Baby Keem",
+    "title": "16",
+    "file_size": 0,
+    "file_path": "",
+    "content_digest": "spotify_1Is8hGpkGMiePASAxBluxM",
+    "source": "spotify",
+    "summary": {
+      "tempo_bpm": 0,
+      "key": "?",
+      "energy": 0,
+      "duration": 156,
+      "phrases": 0,
+      "bars": 0
+    },
+    "created_at": "2026-05-26T23:10:40.252Z",
+    "updated_at": "2026-05-27T00:48:36.330Z"
+  },
+  "2e7f20a6940fabb5": {
+    "track_id": "2e7f20a6940fabb5",
+    "status": "ready",
+    "artist": "Childish Gambino",
+    "title": "Sober",
+    "file_size": 0,
+    "file_path": "",
+    "content_digest": "spotify_7CQ2IUALMZScQUbpdiSxdk",
+    "source": "spotify",
+    "album_art_url": "https://i.scdn.co/image/ab67616d00004851c17df392e8863c69361422c9",
+    "spotify_url": "https://open.spotify.com/track/7CQ2IUALMZScQUbpdiSxdk",
+    "summary": {
+      "tempo_bpm": 0,
+      "key": "?",
+      "energy": 0,
+      "duration": 252,
+      "phrases": 0,
+      "bars": 0
+    },
+    "created_at": "2026-05-26T23:18:01.568Z",
+    "updated_at": "2026-05-27T00:49:09.357Z"
+  },
+  "b45075f42adba957": {
+    "track_id": "b45075f42adba957",
+    "status": "ready",
+    "artist": "The Rare Occasions",
+    "title": "Notion",
+    "file_size": 0,
+    "file_path": "",
+    "content_digest": "spotify_0sTlGEld0h8kIPZaKDYUf4",
+    "source": "spotify",
+    "summary": {
+      "tempo_bpm": 0,
+      "key": "?",
+      "energy": 0,
+      "duration": 195,
+      "phrases": 0,
+      "bars": 0
+    },
+    "created_at": "2026-05-26T23:38:20.693Z",
+    "updated_at": "2026-05-26T23:38:20.693Z"
+  },
+  "e1350975756d2863": {
+    "track_id": "e1350975756d2863",
+    "status": "ready",
+    "artist": "Metronomy",
+    "title": "The Look",
+    "file_size": 0,
+    "file_path": "",
+    "content_digest": "spotify_6zfczP87XO2SxWlQtnjFNa",
+    "source": "spotify",
+    "album_art_url": "https://i.scdn.co/image/ab67616d000048518ca7d89456553e4bbbf3c981",
+    "spotify_url": "https://open.spotify.com/track/6zfczP87XO2SxWlQtnjFNa",
+    "summary": {
+      "tempo_bpm": 0,
+      "key": "?",
+      "energy": 0,
+      "duration": 278,
+      "phrases": 0,
+      "bars": 0
+    },
+    "created_at": "2026-05-27T00:48:44.321Z",
+    "updated_at": "2026-05-27T00:48:52.252Z"
+  },
+  "a5083f14c0446c02": {
+    "track_id": "a5083f14c0446c02",
+    "status": "ready",
+    "artist": "Mac Miller",
+    "title": "I Love Life, Thank You",
+    "file_size": 0,
+    "file_path": "",
+    "content_digest": "spotify_2jfjyl9KksCBvkZFN2qd8e",
+    "source": "spotify",
+    "album_art_url": "https://i.scdn.co/image/ab67616d000048512e8e9d480a55d914e1c5ff3b",
+    "spotify_url": "https://open.spotify.com/track/2jfjyl9KksCBvkZFN2qd8e",
+    "summary": {
+      "tempo_bpm": 0,
+      "key": "?",
+      "energy": 0,
+      "duration": 193,
+      "phrases": 0,
+      "bars": 0
+    },
+    "created_at": "2026-07-07T00:39:03.888Z",
+    "updated_at": "2026-07-07T00:39:12.583Z"
   }
 }
